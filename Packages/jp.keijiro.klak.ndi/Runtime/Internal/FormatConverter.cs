@@ -140,9 +140,26 @@ sealed class FormatConverter : IDisposable
 
     public RenderTexture LastDecoderOutput => _decoderOutput;
 
-    public RenderTexture
-      Decode(int width, int height, bool enableAlpha, IntPtr data)
+    // Received frames come from the network. Frames the decoder can't lay out
+    // (non-positive, odd, or unaligned-with-alpha widths) are rejected
+    // instead of being decoded with out-of-frame indices.
+    // The decoder reads tightly packed rows, so padded rows are rejected too.
+    static bool IsDecodable
+      (int width, int height, int stride, bool alpha, IntPtr data)
+      => data != IntPtr.Zero && width > 0 && height > 0 &&
+         (width & (alpha ? 3 : 1)) == 0 && stride == width * 2 &&
+         (long)width * height <= int.MaxValue / 4;
+
+    // Returns null when the frame is rejected.
+    public RenderTexture Decode
+      (int width, int height, int stride, bool enableAlpha, IntPtr data)
     {
+        if (!IsDecodable(width, height, stride, enableAlpha, data))
+        {
+            CheckDimensions(width, enableAlpha);
+            return null;
+        }
+
         var dataCount = Util.FrameDataSize(width, height, enableAlpha) / 4;
 
         // Reallocate the input buffer when the input size was changed.

@@ -8,7 +8,7 @@ namespace Klak.Ndi {
 // The main thread pushes planar frames from NDI, and the audio thread pulls
 // interleaved samples at the output rate. The sender's clock and the local
 // audio clock drift apart, so the buffered amount is kept between the start
-// threshold and the upper limit: on underrun it outputs silence until enough
+// threshold and the upper limit: on underrun it adds nothing until enough
 // samples have accumulated again, and on overrun it drops the oldest ones.
 //
 sealed class AudioRingBuffer
@@ -68,10 +68,24 @@ sealed class AudioRingBuffer
         }
     }
 
+    // Frames come from the network, so their headers are checked before they
+    // size any buffer or drive any pointer arithmetic.
+    const int MinSampleRate = 8000;
+    const int MaxSampleRate = 192000;
+    const int MaxChannels = 32;
+
+    static bool IsValid(in Interop.AudioFrame frame)
+      => frame.Data != System.IntPtr.Zero &&
+         frame.SampleRate >= MinSampleRate &&
+         frame.SampleRate <= MaxSampleRate &&
+         frame.ChannelCount > 0 && frame.ChannelCount <= MaxChannels &&
+         frame.SampleCount > 0 &&
+         (long)frame.ChannelStride >= (long)frame.SampleCount * 4;
+
     // Planar 32-bit float samples (main thread)
     public unsafe void Push(in Interop.AudioFrame frame)
     {
-        if (frame.ChannelCount <= 0 || frame.SampleCount <= 0) return;
+        if (!IsValid(frame)) return;
 
         lock (_lock)
         {
@@ -91,7 +105,7 @@ sealed class AudioRingBuffer
                 var dst = ((_head + _count + i) % _capacity) * _channels;
                 for (var ch = 0; ch < _channels; ch++)
                     _samples[dst + ch] =
-                      *(float*)(src + ch * frame.ChannelStride + i * 4);
+                      *(float*)(src + (long)ch * frame.ChannelStride + i * 4L);
             }
 
             _count += frames;
@@ -102,10 +116,35 @@ sealed class AudioRingBuffer
         }
     }
 
-    // Interleaved output samples (audio thread)
+    // Interpolated source sample mapped to an output channel
+    // A mono source goes to the front pair, a source with more channels than
+    // the output is averaged into mono output, and extra output channels
+    // (beyond the source layout) stay silent.
+    float MappedSample(int index, float t, int ch, int channels)
+    {
+        if (_channels == 1)
+            return ch < 2 ? Lerp(index, t, 0) : 0;
+
+        if (channels == 1)
+        {
+            var sum = 0.0f;
+            for (var sc = 0; sc < _channels; sc++) sum += Lerp(index, t, sc);
+            return sum / _channels;
+        }
+
+        return ch < _channels ? Lerp(index, t, ch) : 0;
+    }
+
+    float Lerp(int index, float t, int channel)
+    {
+        var a = Sample(index, channel);
+        var b = Sample(index + 1, channel);
+        return a + (b - a) * t;
+    }
+
+    // Mixes the buffered samples into the interleaved output (audio thread)
     public void Read(float[] output, int channels, int outputRate)
     {
-        Array.Clear(output, 0, output.Length);
         if (channels <= 0 || outputRate <= 0) return;
 
         lock (_lock)
@@ -134,14 +173,8 @@ sealed class AudioRingBuffer
 
                 var t = (float)(_phase - index);
                 for (var ch = 0; ch < channels; ch++)
-                {
-                    // Channels beyond the source layout repeat it
-                    // (mono to both sides, for example).
-                    var sc = ch % _channels;
-                    var a = Sample(index, sc);
-                    var b = Sample(index + 1, sc);
-                    output[i * channels + ch] = a + (b - a) * t;
-                }
+                    output[i * channels + ch] +=
+                      MappedSample(index, t, ch, channels);
 
                 _phase += step;
             }

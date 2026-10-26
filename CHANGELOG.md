@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - NDI Sender: `SendAudio` for sending audio samples from any thread.
 - NDI Audio Capture component that forwards the audio passing through its
   GameObject to an NDI Sender.
-- NDI Receiver: Receive Audio option for playing received audio through an
+- NDI Receiver: Receive Audio option for mixing received audio into an
   AudioSource on the same GameObject.
 
 ### Changed
@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   with audio.
 - `NdiSender.ndiName` returns the serialized name before the component
   initializes.
+- The NDI Receiver skips frames it can't decode (odd widths, unaligned widths
+  with alpha, or padded rows) instead of decoding them with broken indices.
 
 ## [2.1.6] - 2025-12-07
 

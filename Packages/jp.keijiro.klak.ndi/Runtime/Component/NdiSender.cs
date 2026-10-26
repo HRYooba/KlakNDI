@@ -13,10 +13,6 @@ public sealed partial class NdiSender : MonoBehaviour
     FormatConverter _converter;
     System.Action<AsyncGPUReadbackRequest> _onReadback;
 
-    // SendAudio may run on the audio thread, so replacing or disposing the
-    // sender instance is done under this lock.
-    readonly object _sendLock = new object();
-
     void PrepareSenderObjects()
     {
         if (_send == null)
@@ -24,7 +20,7 @@ public sealed partial class NdiSender : MonoBehaviour
             // Game view capture method: Borrow the shared sender instance.
             var send = captureMethod == CaptureMethod.GameView
               ? SharedInstance.GameViewSend : Interop.Send.Create(ndiName);
-            lock (_sendLock) _send = send;
+            lock (SharedInstance.SendLock) _send = send;
         }
 
         // Private object initialization
@@ -39,21 +35,18 @@ public sealed partial class NdiSender : MonoBehaviour
         // needed to dispose the readback buffers safely.
         AsyncGPUReadback.WaitAllRequests();
 
+        // Detach the sender instance first. SendAudio holds the lock from the
+        // audio thread, so the slow sync/disposal below runs outside it.
+        Interop.Send send;
+        lock (SharedInstance.SendLock) (send, _send) = (_send, null);
+
         // Game view capture method: Leave the sender instance without
         // disposing (we're not the owner) but synchronize it. It's needed to
         // dispose the readback buffers safely too.
-        lock (_sendLock)
-        {
-            if (SharedInstance.IsGameViewSend(_send))
-            {
-                _send.SendVideoAsync(); // Sync by null-send
-                _send = null;
-            }
-
-            // Private objet disposal
-            _send?.Dispose();
-            _send = null;
-        }
+        if (SharedInstance.IsGameViewSend(send))
+            send.SendVideoAsync(); // Sync by null-send
+        else
+            send?.Dispose(); // Private objet disposal
 
         _pool?.Dispose();
         _pool = null;
@@ -69,10 +62,21 @@ public sealed partial class NdiSender : MonoBehaviour
     #region Capture coroutine for the Texture/GameView capture methods
 
     // Region of the source texture to send (the whole texture when unset)
+    // The width is rounded down to what the frame format can pack.
     RectInt SourceRegion
-      => sourceRect.width > 0 && sourceRect.height > 0
-           ? sourceRect
-           : new RectInt(0, 0, sourceTexture.width, sourceTexture.height);
+    {
+        get
+        {
+            var region = sourceRect.width > 0 && sourceRect.height > 0
+              ? sourceRect
+              : new RectInt(0, 0, sourceTexture.width, sourceTexture.height);
+            region.width = AlignWidth(region.width);
+            return region;
+        }
+    }
+
+    // Width rounded down to what the frame format can pack
+    int AlignWidth(int width) => width & (keepAlpha ? ~3 : ~1);
 
     System.Collections.IEnumerator CaptureCoroutine()
     {
@@ -92,10 +96,10 @@ public sealed partial class NdiSender : MonoBehaviour
             PrepareSenderObjects();
 
             // Texture capture method
-            if (captureMethod == CaptureMethod.Texture && sourceTexture != null)
+            if (captureMethod == CaptureMethod.Texture && sourceTexture != null &&
+                SourceRegion is var region &&
+                region.width > 0 && region.height > 0)
             {
-                var region = SourceRegion;
-
                 // Pixel format conversion
                 var buffer = _converter.Encode
                   (sourceTexture, region, keepAlpha, true);
@@ -114,7 +118,9 @@ public sealed partial class NdiSender : MonoBehaviour
                 ScreenCapture.CaptureScreenshotIntoRenderTexture(tempRT);
 
                 // Pixel format conversion
-                var buffer = _converter.Encode(tempRT, keepAlpha, false);
+                w = AlignWidth(w);
+                var buffer = _converter.Encode
+                  (tempRT, new RectInt(0, 0, w, h), keepAlpha, false);
                 RenderTexture.ReleaseTemporary(tempRT);
 
                 // Readback entry allocation and request
@@ -137,7 +143,8 @@ public sealed partial class NdiSender : MonoBehaviour
         PrepareSenderObjects();
 
         // Pixel format conversion
-        var (w, h) = (sourceCamera.pixelWidth, sourceCamera.pixelHeight);
+        var (w, h) = (AlignWidth(sourceCamera.pixelWidth),
+                      sourceCamera.pixelHeight);
         var buffer = _converter.Encode(cb, source, w, h, keepAlpha, true);
 
         // Readback entry allocation and request
@@ -190,12 +197,16 @@ public sealed partial class NdiSender : MonoBehaviour
 
     #region Audio sending
 
-    // Planar sample buffer (reused; guarded by _sendLock)
+    // Planar sample buffer (reused; guarded by SharedInstance.SendLock)
     float[] _audioPlanes = new float[0];
 
     // Sends interleaved audio samples with this sender's NDI source.
     // Thread-safe: this can be called from the audio thread (for example,
-    // from OnAudioFilterRead). It does nothing while the sender is inactive.
+    // from OnAudioFilterRead). The audio rides on the NDI source that the
+    // video capture creates, so it does nothing until the first video frame
+    // is captured or while the sender is inactive.
+    // Senders in Game View mode share one NDI source, so audio sent from
+    // several of them is mixed into the same stream.
     public unsafe void SendAudio
       (System.ReadOnlySpan<float> interleaved, int channels, int sampleRate)
     {
@@ -203,7 +214,7 @@ public sealed partial class NdiSender : MonoBehaviour
 
         var samples = interleaved.Length / channels;
 
-        lock (_sendLock)
+        lock (SharedInstance.SendLock)
         {
             if (_send == null || _send.IsInvalid || _send.IsClosed) return;
 
@@ -282,8 +293,9 @@ public sealed partial class NdiSender : MonoBehaviour
     // Component state reset with NDI object disposal
     internal void Restart(bool willBeActivate)
     {
-        ResetState(willBeActivate);
+        ResetState(false);
         ReleaseSenderObjects();
+        if (willBeActivate) ResetState(true);
     }
 
     internal void ResetState() => ResetState(isActiveAndEnabled);

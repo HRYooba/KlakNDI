@@ -42,14 +42,20 @@ public sealed partial class NdiReceiver : MonoBehaviour
       { get => _targetMaterialProperty;
         set => _targetMaterialProperty = value; }
 
-    // Plays the received audio through an AudioSource on this GameObject.
-    // The AudioSource has to be playing (with no clip assigned).
+    // Mixes the received audio into an AudioSource on this GameObject.
+    // The AudioSource is started automatically in Play Mode.
     [SerializeField] bool _receiveAudio = false;
     volatile bool _receiveAudioRuntime;
 
     public bool receiveAudio
       { get => _receiveAudioRuntime;
-        set => _receiveAudio = _receiveAudioRuntime = value; }
+        set => SetReceiveAudio(value); }
+
+    void SetReceiveAudio(bool enable)
+    {
+        if (_receiveAudioRuntime != enable) _audioBuffer.Clear();
+        _receiveAudio = _receiveAudioRuntime = enable;
+    }
 
     #endregion
 

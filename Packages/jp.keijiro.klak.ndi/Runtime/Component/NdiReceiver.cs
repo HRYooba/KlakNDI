@@ -40,7 +40,8 @@ public sealed partial class NdiReceiver : MonoBehaviour
     #region Receiver implementation
 
     // Upper bound of frames taken from the queue in a single update
-    const int MaxCapturesPerUpdate = 32;
+    // (a safety bound; the queue is normally drained well before it)
+    const int MaxCapturesPerUpdate = 1024;
 
     RenderTexture TryReceiveFrame()
     {
@@ -60,25 +61,34 @@ public sealed partial class NdiReceiver : MonoBehaviour
         var video = default(Interop.VideoFrame);
         var hasVideo = false;
 
-        for (var i = 0; i < MaxCapturesPerUpdate; i++)
+        try
         {
-            var type = _recv.Capture
-              (out var v, out var a, IntPtr.Zero, 0);
+            for (var i = 0; i < MaxCapturesPerUpdate; i++)
+            {
+                var type = _recv.Capture
+                  (out var v, out var a, IntPtr.Zero, 0);
 
-            if (type == Interop.FrameType.Video)
-            {
-                if (hasVideo) _recv.FreeVideoFrame(video);
-                (video, hasVideo) = (v, true);
+                if (type == Interop.FrameType.Video)
+                {
+                    if (hasVideo) _recv.FreeVideoFrame(video);
+                    (video, hasVideo) = (v, true);
+                }
+                else if (type == Interop.FrameType.Audio)
+                {
+                    try { _audioBuffer.Push(a); }
+                    finally { _recv.FreeAudioFrame(a); }
+                }
+                else
+                {
+                    break;
+                }
             }
-            else if (type == Interop.FrameType.Audio)
-            {
-                _audioBuffer.Push(a);
-                _recv.FreeAudioFrame(a);
-            }
-            else
-            {
-                break;
-            }
+        }
+        catch
+        {
+            // The held video frame is released before the exception leaves.
+            if (hasVideo) _recv.FreeVideoFrame(video);
+            throw;
         }
 
         return hasVideo ? DecodeAndFree(video) : null;
@@ -86,20 +96,26 @@ public sealed partial class NdiReceiver : MonoBehaviour
 
     RenderTexture DecodeAndFree(in Interop.VideoFrame frame)
     {
-        // Pixel format conversion
-        var rt = _converter.Decode
-          (frame.Width, frame.Height, Util.HasAlpha(frame.FourCC), frame.Data);
+        try
+        {
+            // Pixel format conversion
+            var rt = _converter.Decode
+              (frame.Width, frame.Height, frame.LineStride,
+               Util.HasAlpha(frame.FourCC), frame.Data);
 
-        // Metadata retrieval
-        if (frame.Metadata != IntPtr.Zero)
-            metadata = Marshal.PtrToStringAnsi(frame.Metadata);
-        else
-            metadata = null;
+            // Metadata retrieval
+            if (frame.Metadata != IntPtr.Zero)
+                metadata = Marshal.PtrToStringAnsi(frame.Metadata);
+            else
+                metadata = null;
 
-        // Video frame release
-        _recv.FreeVideoFrame(frame);
-
-        return rt;
+            return rt;
+        }
+        finally
+        {
+            // Video frame release
+            _recv.FreeVideoFrame(frame);
+        }
     }
 
     #endregion
@@ -131,14 +147,16 @@ public sealed partial class NdiReceiver : MonoBehaviour
         ReleaseReceiverObjects();
     }
 
-    void Start()
+    // Received audio is mixed in through the AudioSource filter chain, which
+    // only runs while the AudioSource is playing.
+    void EnsureAudioSourcePlaying()
     {
-        // Received audio is mixed in through the AudioSource filter chain,
-        // which only runs while the AudioSource is playing.
-        if (Application.isPlaying && _receiveAudioRuntime &&
-            TryGetComponent<AudioSource>(out var source) && !source.isPlaying)
-            source.Play();
+        if (!Application.isPlaying || !_receiveAudioRuntime) return;
+        if (_audioSource == null && !TryGetComponent(out _audioSource)) return;
+        if (!_audioSource.isPlaying) _audioSource.Play();
     }
+
+    AudioSource _audioSource;
 
     // Received audio output
     // This runs only when an AudioSource is playing on this GameObject.
@@ -150,6 +168,8 @@ public sealed partial class NdiReceiver : MonoBehaviour
 
     void Update()
     {
+        EnsureAudioSourcePlaying();
+
         var rt = TryReceiveFrame();
         if (rt == null) return;
 

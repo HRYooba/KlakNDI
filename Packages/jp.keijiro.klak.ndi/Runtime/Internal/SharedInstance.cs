@@ -16,6 +16,10 @@ static class SharedInstance
     static public bool IsGameViewSend(Interop.Send send)
       => send != null && send == _gameViewSend;
 
+    // Guards NdiSender instances against SendAudio calls from the audio
+    // thread. It's shared because Game View senders share one NDI source.
+    static public readonly object SendLock = new object();
+
     #endregion
 
     #region Shared object implementation
@@ -72,8 +76,11 @@ static class SharedInstance
         _find?.Dispose();
         _find = null;
 
-        _gameViewSend?.Dispose();
-        _gameViewSend = null;
+        lock (SendLock)
+        {
+            _gameViewSend?.Dispose();
+            _gameViewSend = null;
+        }
     }
 
     #else

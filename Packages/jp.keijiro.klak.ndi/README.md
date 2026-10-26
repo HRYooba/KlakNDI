@@ -123,7 +123,9 @@ whole texture. The region may extend outside the texture; those pixels are sent
 as black.
 
 You can send audio samples with the C# `SendAudio` method. It can be called from
-any thread, including the audio thread. The **NDI Audio Capture** component
+any thread, including the audio thread. The audio rides on the NDI source that
+the video capture creates, so samples are dropped until the first video frame
+is captured. The **NDI Audio Capture** component
 (`NdiAudioCapture`) does this for you: attach it to the GameObject with the
 AudioListener to send the final mix, or to a GameObject with an AudioSource to
 send that source only.
@@ -147,8 +149,10 @@ renderer.
 
 You can extract metadata using the C# `.metadata` property.
 
-Enable **Receive Audio** and add an AudioSource (with no clip) to the same
-GameObject to play the received audio.
+Enable **Receive Audio** and add an AudioSource to the same GameObject to play
+the received audio. The received audio is mixed into the AudioSource output, and
+the AudioSource is started automatically in Play Mode. Frames with padded rows
+(line stride other than width x 2) are not supported and are skipped.
 
 Tips for Scripting
 ------------------
