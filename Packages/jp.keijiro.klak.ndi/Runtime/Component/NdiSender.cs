@@ -61,22 +61,24 @@ public sealed partial class NdiSender : MonoBehaviour
 
     #region Capture coroutine for the Texture/GameView capture methods
 
-    // Region of the source texture to send (the whole texture when unset)
-    // The width is rounded down to what the frame format can pack.
+    // Region of the source texture to send
     RectInt SourceRegion
+      => ResolveRegion(sourceTexture, sourceRect, keepAlpha);
+
+    // The whole texture when the rect is unset, with the width rounded down
+    // to what the frame format can pack.
+    static RectInt ResolveRegion(Texture texture, RectInt rect, bool alpha)
     {
-        get
-        {
-            var region = sourceRect.width > 0 && sourceRect.height > 0
-              ? sourceRect
-              : new RectInt(0, 0, sourceTexture.width, sourceTexture.height);
-            region.width = AlignWidth(region.width);
-            return region;
-        }
+        var region = rect.width > 0 && rect.height > 0
+          ? rect : new RectInt(0, 0, texture.width, texture.height);
+        region.width = AlignWidth(region.width, alpha);
+        return region;
     }
 
     // Width rounded down to what the frame format can pack
-    int AlignWidth(int width) => width & (keepAlpha ? ~3 : ~1);
+    static int AlignWidth(int width, bool alpha) => width & (alpha ? ~3 : ~1);
+
+    int AlignWidth(int width) => AlignWidth(width, keepAlpha);
 
     System.Collections.IEnumerator CaptureCoroutine()
     {

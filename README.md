@@ -35,7 +35,7 @@ To install this fork, add the following line to the `dependencies` section of
 `Packages/manifest.json` (replace the tag with the version you need):
 
 ```
-"jp.keijiro.klak.ndi": "https://github.com/HRYooba/KlakNDI.git?path=Packages/jp.keijiro.klak.ndi#v2.2.0-hryooba.1"
+"jp.keijiro.klak.ndi": "https://github.com/HRYooba/KlakNDI.git?path=Packages/jp.keijiro.klak.ndi#v2.2.0-hryooba.2"
 ```
 
 System Requirements
@@ -120,7 +120,8 @@ You can attach metadata using the C# `.metadata` property.
 With the Texture capture method, **Source Rect** selects a region of the source
 texture in pixels from the bottom-left corner. Leave it zero-sized to send the
 whole texture. The region may extend outside the texture; those pixels are sent
-as black.
+as black. The `sentTextureRegion` property returns the region that is actually
+sent (with the width rounded down to a packable value).
 
 You can send audio samples with the C# `SendAudio` method. It can be called from
 any thread, including the audio thread. The audio rides on the NDI source that
