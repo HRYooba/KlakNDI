@@ -21,6 +21,7 @@ sealed class NdiReceiverEditor : UnityEditor.Editor
     AutoProperty _targetTexture;
     AutoProperty _targetRenderer;
     AutoProperty _targetMaterialProperty;
+    AutoProperty _receiveAudio;
 
     #pragma warning restore
 
@@ -89,6 +90,16 @@ sealed class NdiReceiverEditor : UnityEditor.Editor
         }
 
         EditorGUI.indentLevel--;
+
+        // Receive Audio
+        EditorGUILayout.PropertyField(_receiveAudio);
+
+        if (_receiveAudio.Target.boolValue &&
+            !_receiveAudio.Target.hasMultipleDifferentValues &&
+            !((Component)target).TryGetComponent<AudioSource>(out _))
+            EditorGUILayout.HelpBox
+              ("Add an AudioSource to play the received audio.",
+               MessageType.Info);
 
         serializedObject.ApplyModifiedProperties();
     }

@@ -10,6 +10,9 @@
 StructuredBuffer<uint> Source;
 RWTexture2D<float4> Destination;
 
+// Frame dimensions (the destination texture has the same size)
+uint2 FrameSize;
+
 // sRGB to linear conversion
 float4 sRGB_to_Linear(float4 c)
 {
@@ -54,8 +57,8 @@ float4 UnpackAAAA(uint v)
 // UYVY decoder function
 float2x4 DecodeUYVY(uint2 id)
 {
-    uint w, h;
-    Destination.GetDimensions(w, h);
+    uint w = FrameSize.x;
+    uint h = FrameSize.y;
 
     uint id_y = h - 1 - id.y;
 
@@ -69,8 +72,8 @@ float2x4 DecodeUYVY(uint2 id)
 // UYVA decoder function
 float4x4 DecodeUYVA(uint2 id)
 {
-    uint w, h;
-    Destination.GetDimensions(w, h);
+    uint w = FrameSize.x;
+    uint h = FrameSize.y;
 
     uint id_y = h - 1 - id.y;
 
@@ -88,10 +91,13 @@ float4x4 DecodeUYVA(uint2 id)
 }
 
 // Decoder kernel entry points
+// The dispatch rounds the frame up to whole thread groups, so each kernel
+// rejects the threads that fall outside the frame.
 
 [numthreads(8, 8, 1)]
 void DecodeUYVY_sRGB(uint2 id : SV_DispatchThreadID)
 {
+    if (id.x * 2 >= FrameSize.x || id.y >= FrameSize.y) return;
     float2x4 d = DecodeUYVY(id);
     uint2 dp = id * uint2(2, 1);
     Destination[dp + uint2(0, 0)] = d[0];
@@ -101,6 +107,7 @@ void DecodeUYVY_sRGB(uint2 id : SV_DispatchThreadID)
 [numthreads(8, 8, 1)]
 void DecodeUYVY_Linear(uint2 id : SV_DispatchThreadID)
 {
+    if (id.x * 2 >= FrameSize.x || id.y >= FrameSize.y) return;
     float2x4 d = DecodeUYVY(id);
     uint2 dp = id * uint2(2, 1);
     Destination[dp + uint2(0, 0)] = sRGB_to_Linear(d[0]);
@@ -110,6 +117,7 @@ void DecodeUYVY_Linear(uint2 id : SV_DispatchThreadID)
 [numthreads(4, 8, 1)]
 void DecodeUYVA_sRGB(uint2 id : SV_DispatchThreadID)
 {
+    if (id.x * 4 >= FrameSize.x || id.y >= FrameSize.y) return;
     float4x4 d = DecodeUYVA(id);
     uint2 dp = id * uint2(4, 1);
     Destination[dp + uint2(0, 0)] = d[0];
@@ -121,6 +129,7 @@ void DecodeUYVA_sRGB(uint2 id : SV_DispatchThreadID)
 [numthreads(4, 8, 1)]
 void DecodeUYVA_Linear(uint2 id : SV_DispatchThreadID)
 {
+    if (id.x * 4 >= FrameSize.x || id.y >= FrameSize.y) return;
     float4x4 d = DecodeUYVA(id);
     uint2 dp = id * uint2(4, 1);
     Destination[dp + uint2(0, 0)] = sRGB_to_Linear(d[0]);

@@ -19,6 +19,7 @@ sealed class NdiSenderEditor : UnityEditor.Editor
     AutoProperty _captureMethod;
     AutoProperty _sourceCamera;
     AutoProperty _sourceTexture;
+    AutoProperty _sourceRect;
 
     #pragma warning restore
 
@@ -46,10 +47,13 @@ sealed class NdiSenderEditor : UnityEditor.Editor
             _captureMethod.Target.enumValueIndex == (int)CaptureMethod.Camera)
             EditorGUILayout.PropertyField(_sourceCamera);
 
-        // Source Texture
+        // Source Texture / Source Rect
         if (_captureMethod.Target.hasMultipleDifferentValues ||
             _captureMethod.Target.enumValueIndex == (int)CaptureMethod.Texture)
+        {
             EditorGUILayout.PropertyField(_sourceTexture);
+            EditorGUILayout.PropertyField(_sourceRect);
+        }
 
         EditorGUI.indentLevel--;
 

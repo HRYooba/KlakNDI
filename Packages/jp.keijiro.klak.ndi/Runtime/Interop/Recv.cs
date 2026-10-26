@@ -48,8 +48,16 @@ public class Recv : SafeHandleZeroOrMinusOneIsInvalid
       (out VideoFrame video, IntPtr audio, IntPtr metadata, uint timeout)
       => _Capture(this, out video, audio, metadata, timeout);
 
+    public FrameType Capture
+      (out VideoFrame video, out AudioFrame audio,
+       IntPtr metadata, uint timeout)
+      => _Capture(this, out video, out audio, metadata, timeout);
+
     public void FreeVideoFrame(in VideoFrame frame)
       => _FreeVideo(this, frame);
+
+    public void FreeAudioFrame(in AudioFrame frame)
+      => _FreeAudio(this, frame);
 
     public bool SetTally(in Tally tally)
       => _SetTally(this, tally);
@@ -80,8 +88,16 @@ public class Recv : SafeHandleZeroOrMinusOneIsInvalid
       (Recv recv, out VideoFrame video,
        IntPtr audio, IntPtr metadata, uint timeout);
 
+    [DllImport(Config.DllName, EntryPoint = "NDIlib_recv_capture_v2")]
+    static extern FrameType _Capture
+      (Recv recv, out VideoFrame video, out AudioFrame audio,
+       IntPtr metadata, uint timeout);
+
     [DllImport(Config.DllName, EntryPoint = "NDIlib_recv_free_video_v2")]
     static extern void _FreeVideo(Recv recv, in VideoFrame data);
+
+    [DllImport(Config.DllName, EntryPoint = "NDIlib_recv_free_audio_v2")]
+    static extern void _FreeAudio(Recv recv, in AudioFrame data);
 
     [DllImport(Config.DllName, EntryPoint = "NDIlib_recv_set_tally")]
     [return: MarshalAs(UnmanagedType.U1)]

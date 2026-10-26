@@ -1,14 +1,14 @@
 {
   "name": "jp.keijiro.klak.ndi",
-  "version": "2.1.6",
-  "displayName": "KlakNDI",
+  "version": "2.2.0-hryooba.1",
+  "displayName": "KlakNDI (HRYooba fork)",
   "description": "NewTek NDI® plugin for Unity",
   "unity": "2022.3",
   "author": "Keijiro Takahashi",
   "dependencies": { "com.unity.modules.screencapture": "1.0.0" },
-  "changelogUrl": "https://github.com/keijiro/KlakNDI/blob/main/CHANGELOG.md",
-  "documentationUrl": "https://github.com/keijiro/KlakNDI",
+  "changelogUrl": "https://github.com/HRYooba/KlakNDI/blob/hryooba/CHANGELOG.md",
+  "documentationUrl": "https://github.com/HRYooba/KlakNDI",
   "licensesUrl": "https://github.com/keijiro/KlakNDI/blob/main/LICENSE",
   "license": "SEE LICENSE IN LICENSE",
-  "_upm": { "changelog": "<b>Fixed</b><br>- Replaced obsolete shader property utilities with Unity 6.3-compatible API usage." }
+  "_upm": { "changelog": "<b>Added</b><br>- NDI Sender: Source Rect for sending a region of the source texture.<br>- NDI Sender: <i>SendAudio</i> for sending audio samples from any thread.<br>- NDI Audio Capture component that forwards the audio passing through its GameObject to an NDI Sender.<br>- NDI Receiver: Receive Audio option for playing received audio through an AudioSource on the same GameObject.<br><br><b>Changed</b><br>- Frames no longer have to be multiples of 16x8. The width only has to be a multiple of 2 (a multiple of 4 with alpha).<br>- Video frames are sent with synthesized timecodes so that NDI can align them with audio.<br>- <i>NdiSender.ndiName</i> returns the serialized name before the component initializes." }
 }

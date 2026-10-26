@@ -13,14 +13,21 @@ public sealed partial class NdiSender : MonoBehaviour
     FormatConverter _converter;
     System.Action<AsyncGPUReadbackRequest> _onReadback;
 
+    // SendAudio may run on the audio thread, so replacing or disposing the
+    // sender instance is done under this lock.
+    readonly object _sendLock = new object();
+
     void PrepareSenderObjects()
     {
-        // Game view capture method: Borrow the shared sender instance.
-        if (_send == null && captureMethod == CaptureMethod.GameView)
-            _send = SharedInstance.GameViewSend;
+        if (_send == null)
+        {
+            // Game view capture method: Borrow the shared sender instance.
+            var send = captureMethod == CaptureMethod.GameView
+              ? SharedInstance.GameViewSend : Interop.Send.Create(ndiName);
+            lock (_sendLock) _send = send;
+        }
 
         // Private object initialization
-        if (_send == null) _send = Interop.Send.Create(ndiName);
         if (_pool == null) _pool = new ReadbackPool();
         if (_converter == null) _converter = new FormatConverter(_resources);
         if (_onReadback == null) _onReadback = OnReadback;
@@ -35,15 +42,18 @@ public sealed partial class NdiSender : MonoBehaviour
         // Game view capture method: Leave the sender instance without
         // disposing (we're not the owner) but synchronize it. It's needed to
         // dispose the readback buffers safely too.
-        if (SharedInstance.IsGameViewSend(_send))
+        lock (_sendLock)
         {
-            _send.SendVideoAsync(); // Sync by null-send
+            if (SharedInstance.IsGameViewSend(_send))
+            {
+                _send.SendVideoAsync(); // Sync by null-send
+                _send = null;
+            }
+
+            // Private objet disposal
+            _send?.Dispose();
             _send = null;
         }
-
-        // Private objet disposal
-        _send?.Dispose();
-        _send = null;
 
         _pool?.Dispose();
         _pool = null;
@@ -57,6 +67,12 @@ public sealed partial class NdiSender : MonoBehaviour
     #endregion
 
     #region Capture coroutine for the Texture/GameView capture methods
+
+    // Region of the source texture to send (the whole texture when unset)
+    RectInt SourceRegion
+      => sourceRect.width > 0 && sourceRect.height > 0
+           ? sourceRect
+           : new RectInt(0, 0, sourceTexture.width, sourceTexture.height);
 
     System.Collections.IEnumerator CaptureCoroutine()
     {
@@ -78,13 +94,14 @@ public sealed partial class NdiSender : MonoBehaviour
             // Texture capture method
             if (captureMethod == CaptureMethod.Texture && sourceTexture != null)
             {
-                var (w, h) = (sourceTexture.width, sourceTexture.height);
+                var region = SourceRegion;
 
                 // Pixel format conversion
-                var buffer = _converter.Encode(sourceTexture, keepAlpha, true);
+                var buffer = _converter.Encode
+                  (sourceTexture, region, keepAlpha, true);
 
                 // Readback entry allocation and request
-                _pool.NewEntry(w, h, keepAlpha, metadata)
+                _pool.NewEntry(region.width, region.height, keepAlpha, metadata)
                      .RequestReadback(buffer, _onReadback);
             }
 
@@ -153,6 +170,7 @@ public sealed partial class NdiSender : MonoBehaviour
             LineStride  = entry.Stride,
             FourCC      = entry.FourCC,
             FrameFormat = Interop.FrameFormat.Progressive,
+            Timecode    = Interop.Timecode.Synthesize,
             Data        = entry.ImagePointer,
             Metadata    = entry.MetadataPointer };
 
@@ -166,6 +184,51 @@ public sealed partial class NdiSender : MonoBehaviour
 
         // Mark this frame to get freed in the next frame.
         _pool.Mark(entry);
+    }
+
+    #endregion
+
+    #region Audio sending
+
+    // Planar sample buffer (reused; guarded by _sendLock)
+    float[] _audioPlanes = new float[0];
+
+    // Sends interleaved audio samples with this sender's NDI source.
+    // Thread-safe: this can be called from the audio thread (for example,
+    // from OnAudioFilterRead). It does nothing while the sender is inactive.
+    public unsafe void SendAudio
+      (System.ReadOnlySpan<float> interleaved, int channels, int sampleRate)
+    {
+        if (channels <= 0 || interleaved.Length < channels) return;
+
+        var samples = interleaved.Length / channels;
+
+        lock (_sendLock)
+        {
+            if (_send == null || _send.IsInvalid || _send.IsClosed) return;
+
+            // Interleaved -> planar conversion
+            if (_audioPlanes.Length < samples * channels)
+                _audioPlanes = new float[samples * channels];
+
+            for (var ch = 0; ch < channels; ch++)
+                for (var i = 0; i < samples; i++)
+                    _audioPlanes[ch * samples + i] =
+                      interleaved[i * channels + ch];
+
+            fixed (float* data = _audioPlanes)
+            {
+                var frame = new Interop.AudioFrame
+                  { SampleRate    = sampleRate,
+                    ChannelCount  = channels,
+                    SampleCount   = samples,
+                    Timecode      = Interop.Timecode.Synthesize,
+                    Data          = (System.IntPtr)data,
+                    ChannelStride = samples * sizeof(float) };
+
+                _send.SendAudio(frame);
+            }
+        }
     }
 
     #endregion

@@ -34,14 +34,22 @@ sealed class FormatConverter : IDisposable
         _decoderOutput = null;
     }
 
-    void CheckDimensions(int width, int height)
+    // UYVY packs two pixels into a word, and the UYVA alpha plane packs four.
+    void CheckDimensions(int width, bool alpha)
     {
-        if ((width & 0xf) != 0)
-            WarnWrongSize($"Width ({width}) must be a multiple of 16.");
-
-        if ((height & 0x7) != 0)
-            WarnWrongSize($"Height ({height}) must be a multiple of 8.");
+        if (alpha && (width & 3) != 0)
+            WarnWrongSize($"Width ({width}) must be a multiple of 4 with alpha.");
+        else if ((width & 1) != 0)
+            WarnWrongSize($"Width ({width}) must be a multiple of 2.");
     }
+
+    // Thread group counts covering a frame. The kernels reject the threads
+    // that fall outside the frame.
+    static int GroupsX(int width, bool alpha)
+      => alpha ? (width / 4 + 3) / 4 : (width / 2 + 7) / 8;
+
+    static int GroupsY(int height)
+      => (height + 7) / 8;
 
     void WarnWrongSize(string text)
       => Debug.LogWarning("[KlakNDI] Unsupported frame size: " + text);
@@ -54,9 +62,16 @@ sealed class FormatConverter : IDisposable
 
     // Immediate mode version
     public ComputeBuffer Encode(Texture source, bool enableAlpha, bool vflip)
+      => Encode(source, new RectInt(0, 0, source.width, source.height),
+                enableAlpha, vflip);
+
+    // Immediate mode version with a source region
+    // The region may extend outside the source; those pixels become black.
+    public ComputeBuffer Encode
+      (Texture source, RectInt region, bool enableAlpha, bool vflip)
     {
-        var width = source.width;
-        var height = source.height;
+        var width = region.width;
+        var height = region.height;
         var dataCount = Util.FrameDataSize(width, height, enableAlpha) / 4;
 
         // Reallocate the output buffer when the output size was changed.
@@ -66,7 +81,7 @@ sealed class FormatConverter : IDisposable
         // Output buffer allocation
         if (_encoderOutput == null)
         {
-            CheckDimensions(width, height);
+            CheckDimensions(width, enableAlpha);
             _encoderOutput = new ComputeBuffer(dataCount, 4);
         }
 
@@ -74,9 +89,12 @@ sealed class FormatConverter : IDisposable
         var compute = _resources.encoderCompute;
         var pass = (enableAlpha ? 2 : 0) + (Util.InGammaMode ? 0 : 1);
         compute.SetFloat("VFlip", vflip ? 1 : 0);
+        compute.SetInts("Offset", region.x, region.y);
+        compute.SetInts("FrameSize", width, height);
         compute.SetTexture(pass, "Source", source);
         compute.SetBuffer(pass, "Destination", _encoderOutput);
-        compute.Dispatch(pass, width / 16, height / 8, 1);
+        compute.Dispatch
+          (pass, GroupsX(width, enableAlpha), GroupsY(height), 1);
 
         return _encoderOutput;
     }
@@ -88,8 +106,6 @@ sealed class FormatConverter : IDisposable
     {
         var dataCount = Util.FrameDataSize(width, height, enableAlpha) / 4;
 
-        CheckDimensions(width, height);
-
         // Reallocate the output buffer when the output size was changed.
         if (_encoderOutput != null && _encoderOutput.count != dataCount)
             ReleaseBuffers();
@@ -97,7 +113,7 @@ sealed class FormatConverter : IDisposable
         // Output buffer allocation
         if (_encoderOutput == null)
         {
-            CheckDimensions(width, height);
+            CheckDimensions(width, enableAlpha);
             _encoderOutput = new ComputeBuffer(dataCount, 4);
         }
 
@@ -105,9 +121,12 @@ sealed class FormatConverter : IDisposable
         var compute = _resources.encoderCompute;
         var pass = (enableAlpha ? 2 : 0) + (Util.InGammaMode ? 0 : 1);
         cb.SetComputeFloatParam(compute, "VFlip", vflip ? 1 : 0);
+        cb.SetComputeIntParams(compute, "Offset", 0, 0);
+        cb.SetComputeIntParams(compute, "FrameSize", width, height);
         cb.SetComputeTextureParam(compute, pass, "Source", source);
         cb.SetComputeBufferParam(compute, pass, "Destination", _encoderOutput);
-        cb.DispatchCompute(compute, pass, width / 16, height / 8, 1);
+        cb.DispatchCompute
+          (compute, pass, GroupsX(width, enableAlpha), GroupsY(height), 1);
 
         return _encoderOutput;
     }
@@ -126,8 +145,6 @@ sealed class FormatConverter : IDisposable
     {
         var dataCount = Util.FrameDataSize(width, height, enableAlpha) / 4;
 
-        CheckDimensions(width, height);
-
         // Reallocate the input buffer when the input size was changed.
         if (_decoderInput != null && _decoderInput.count != dataCount)
             ReleaseBuffers();
@@ -145,7 +162,7 @@ sealed class FormatConverter : IDisposable
         // Output buffer allocation
         if (_decoderOutput == null)
         {
-            CheckDimensions(width, height);
+            CheckDimensions(width, enableAlpha);
         #if KLAK_NDI_ISSUE200_WORKAROUND
             _decoderOutput = new RenderTexture(width, height, 0, RenderTextureFormat.ARGBHalf);
         #else
@@ -167,9 +184,11 @@ sealed class FormatConverter : IDisposable
 
         // Decoder compute dispatching
         var compute = _resources.decoderCompute;
+        compute.SetInts("FrameSize", width, height);
         compute.SetBuffer(pass, "Source", _decoderInput);
         compute.SetTexture(pass, "Destination", _decoderOutput);
-        compute.Dispatch(pass, width / 16, height / 8, 1);
+        compute.Dispatch
+          (pass, GroupsX(width, enableAlpha), GroupsY(height), 1);
 
         return _decoderOutput;
     }

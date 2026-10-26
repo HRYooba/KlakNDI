@@ -32,6 +32,10 @@ public class Send : SafeHandleZeroOrMinusOneIsInvalid
     public void SendVideoAsync()
       => _SendVideoAsync(this, IntPtr.Zero);
 
+    // NDI copies the samples before this returns.
+    public void SendAudio(in AudioFrame data)
+      => _SendAudio(this, data);
+
     public bool SetTally(out Tally tally, uint timeout)
       => _SetTally(this, out tally, timeout);
 
@@ -63,6 +67,9 @@ public class Send : SafeHandleZeroOrMinusOneIsInvalid
 
     [DllImport(Config.DllName, EntryPoint = "NDIlib_send_send_video_async_v2")]
     static extern void _SendVideoAsync(Send send, IntPtr data);
+
+    [DllImport(Config.DllName, EntryPoint = "NDIlib_send_send_audio_v2")]
+    static extern void _SendAudio(Send send, in AudioFrame data);
 
     [DllImport(Config.DllName, EntryPoint = "NDIlib_send_get_tally")]
     [return: MarshalAs(UnmanagedType.U1)]

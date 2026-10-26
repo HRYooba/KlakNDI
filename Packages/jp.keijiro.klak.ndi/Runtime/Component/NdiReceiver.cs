@@ -13,6 +13,7 @@ public sealed partial class NdiReceiver : MonoBehaviour
     Interop.Recv _recv;
     FormatConverter _converter;
     MaterialPropertyBlock _override;
+    readonly AudioRingBuffer _audioBuffer = new AudioRingBuffer();
 
     void PrepareReceiverObjects()
     {
@@ -26,6 +27,8 @@ public sealed partial class NdiReceiver : MonoBehaviour
         _recv?.Dispose();
         _recv = null;
 
+        _audioBuffer.Clear();
+
         _converter?.Dispose();
         _converter = null;
 
@@ -36,16 +39,53 @@ public sealed partial class NdiReceiver : MonoBehaviour
 
     #region Receiver implementation
 
+    // Upper bound of frames taken from the queue in a single update
+    const int MaxCapturesPerUpdate = 32;
+
     RenderTexture TryReceiveFrame()
     {
         PrepareReceiverObjects();
         if (_recv == null) return null;
 
-        // Video frame capturing
-        var frameOrNull = RecvHelper.TryCaptureVideoFrame(_recv);
-        if (frameOrNull == null) return null;
-        var frame = (Interop.VideoFrame)frameOrNull;
+        if (!receiveAudio)
+        {
+            // Video frame capturing
+            var frameOrNull = RecvHelper.TryCaptureVideoFrame(_recv);
+            if (frameOrNull == null) return null;
+            return DecodeAndFree((Interop.VideoFrame)frameOrNull);
+        }
 
+        // Audio arrives more often than video, so drain the queue: push every
+        // audio frame and keep only the newest video frame.
+        var video = default(Interop.VideoFrame);
+        var hasVideo = false;
+
+        for (var i = 0; i < MaxCapturesPerUpdate; i++)
+        {
+            var type = _recv.Capture
+              (out var v, out var a, IntPtr.Zero, 0);
+
+            if (type == Interop.FrameType.Video)
+            {
+                if (hasVideo) _recv.FreeVideoFrame(video);
+                (video, hasVideo) = (v, true);
+            }
+            else if (type == Interop.FrameType.Audio)
+            {
+                _audioBuffer.Push(a);
+                _recv.FreeAudioFrame(a);
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return hasVideo ? DecodeAndFree(video) : null;
+    }
+
+    RenderTexture DecodeAndFree(in Interop.VideoFrame frame)
+    {
         // Pixel format conversion
         var rt = _converter.Decode
           (frame.Width, frame.Height, Util.HasAlpha(frame.FourCC), frame.Data);
@@ -72,7 +112,41 @@ public sealed partial class NdiReceiver : MonoBehaviour
 
     #region MonoBehaviour implementation
 
-    void OnDisable() => ReleaseReceiverObjects();
+    // OnAudioFilterRead runs on the audio thread and can't read
+    // AudioSettings, so the output rate is copied here.
+    volatile int _outputSampleRate;
+
+    void UpdateOutputSampleRate(bool deviceWasChanged = false)
+      => _outputSampleRate = AudioSettings.outputSampleRate;
+
+    void OnEnable()
+    {
+        UpdateOutputSampleRate();
+        AudioSettings.OnAudioConfigurationChanged += UpdateOutputSampleRate;
+    }
+
+    void OnDisable()
+    {
+        AudioSettings.OnAudioConfigurationChanged -= UpdateOutputSampleRate;
+        ReleaseReceiverObjects();
+    }
+
+    void Start()
+    {
+        // Received audio is mixed in through the AudioSource filter chain,
+        // which only runs while the AudioSource is playing.
+        if (Application.isPlaying && _receiveAudioRuntime &&
+            TryGetComponent<AudioSource>(out var source) && !source.isPlaying)
+            source.Play();
+    }
+
+    // Received audio output
+    // This runs only when an AudioSource is playing on this GameObject.
+    void OnAudioFilterRead(float[] data, int channels)
+    {
+        if (_receiveAudioRuntime)
+            _audioBuffer.Read(data, channels, _outputSampleRate);
+    }
 
     void Update()
     {

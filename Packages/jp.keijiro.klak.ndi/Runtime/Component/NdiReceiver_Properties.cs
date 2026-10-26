@@ -42,6 +42,15 @@ public sealed partial class NdiReceiver : MonoBehaviour
       { get => _targetMaterialProperty;
         set => _targetMaterialProperty = value; }
 
+    // Plays the received audio through an AudioSource on this GameObject.
+    // The AudioSource has to be playing (with no clip assigned).
+    [SerializeField] bool _receiveAudio = false;
+    volatile bool _receiveAudioRuntime;
+
+    public bool receiveAudio
+      { get => _receiveAudioRuntime;
+        set => _receiveAudio = _receiveAudioRuntime = value; }
+
     #endregion
 
     #region Runtime property
@@ -74,7 +83,10 @@ public sealed partial class NdiReceiver : MonoBehaviour
     #else
     void Awake()
     #endif
-      => ndiName = _ndiName;
+    {
+        ndiName = _ndiName;
+        receiveAudio = _receiveAudio;
+    }
 
     #endregion
 }

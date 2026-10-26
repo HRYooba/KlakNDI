@@ -13,6 +13,31 @@ refer to [ndi.video][NDI] for more information about the technology.
 [NDI]: https://ndi.video/
 [Vizrt]: https://www.vizrt.com
 
+About This Fork
+---------------
+
+This is a fork of [KlakNDI] with the following additions. It keeps the
+original package name, assembly names, and namespaces, so it works as a drop-in
+replacement for the original package.
+
+- Frames of arbitrary dimensions: the width only has to be a multiple of 2
+  (a multiple of 4 with alpha). The height has no restriction.
+- Source region: the NDI Sender can send a rectangular region of a source
+  texture (Texture capture method).
+- Audio sending: the NDI Sender can send audio samples, and the NDI Audio
+  Capture component forwards the audio passing through its GameObject.
+- Audio receiving: the NDI Receiver can play received audio through an
+  AudioSource on the same GameObject.
+
+[KlakNDI]: https://github.com/keijiro/KlakNDI
+
+To install this fork, add the following line to the `dependencies` section of
+`Packages/manifest.json` (replace the tag with the version you need):
+
+```
+"jp.keijiro.klak.ndi": "https://github.com/HRYooba/KlakNDI.git?path=Packages/jp.keijiro.klak.ndi#v2.2.0-hryooba.1"
+```
+
 System Requirements
 -------------------
 
@@ -49,12 +74,13 @@ Please review it before using the package in your project.
 Known Issues and Limitations
 ----------------------------
 
-- Dimensions of frame images should be multiples of 16x8. This limitation causes
-  glitches on several mobile devices when using the Game View capture method.
+- The width of frame images should be a multiple of 2 (a multiple of 4 with
+  alpha).
 
-- KlakNDI doesn't support audio streaming. There are several technical
-  difficulties to implement without perceptible noise or delay, so there are no
-  plans to implement it.
+- Received audio is resampled to the output rate with linear interpolation and
+  kept within a small latency window (about 50 to 200 ms). Clock drift between
+  the sender and the receiver is absorbed by dropping samples or inserting
+  silence, which can be audible.
 
 How To Install
 --------------
@@ -91,6 +117,17 @@ options:
 
 You can attach metadata using the C# `.metadata` property.
 
+With the Texture capture method, **Source Rect** selects a region of the source
+texture in pixels from the bottom-left corner. Leave it zero-sized to send the
+whole texture. The region may extend outside the texture; those pixels are sent
+as black.
+
+You can send audio samples with the C# `SendAudio` method. It can be called from
+any thread, including the audio thread. The **NDI Audio Capture** component
+(`NdiAudioCapture`) does this for you: attach it to the GameObject with the
+AudioListener to send the final mix, or to a GameObject with an AudioSource to
+send that source only.
+
 NDI Receiver Component
 ----------------------
 
@@ -109,6 +146,9 @@ texture asset.
 renderer.
 
 You can extract metadata using the C# `.metadata` property.
+
+Enable **Receive Audio** and add an AudioSource (with no clip) to the same
+GameObject to play the received audio.
 
 Tips for Scripting
 ------------------

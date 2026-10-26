@@ -11,8 +11,10 @@ public sealed partial class NdiSender : MonoBehaviour
     [SerializeField] string _ndiName = "NDI Sender";
     string _ndiNameRuntime;
 
+    // Falls back to the serialized name before the component initializes
+    // (for example, while its GameObject has never been active).
     public string ndiName
-      { get => _ndiNameRuntime;
+      { get => _ndiNameRuntime ?? _ndiName;
         set => SetNdiName(value); }
 
     void SetNdiName(string name)
@@ -65,6 +67,15 @@ public sealed partial class NdiSender : MonoBehaviour
     public Texture sourceTexture
       { get => _sourceTexture;
         set => _sourceTexture = value; }
+
+    // Region of the source texture to send, in pixels from the bottom-left
+    // corner. A zero-sized region sends the whole texture. The region may
+    // extend outside the texture; those pixels are sent as black.
+    [SerializeField] RectInt _sourceRect = default;
+
+    public RectInt sourceRect
+      { get => _sourceRect;
+        set => _sourceRect = value; }
 
     #endregion
 

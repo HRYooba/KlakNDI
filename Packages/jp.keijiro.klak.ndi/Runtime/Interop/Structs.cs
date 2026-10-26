@@ -68,6 +68,26 @@ public struct VideoFrame
     public long Timestamp;
 }
 
+// Audio frame descriptor (equivalent to NDIlib_audio_frame_v2_t)
+// The samples are planar 32-bit float (one plane per channel).
+[StructLayout(LayoutKind.Sequential)]
+public struct AudioFrame
+{
+    public int SampleRate, ChannelCount, SampleCount;
+    public long Timecode;
+    public IntPtr Data;
+    public int ChannelStride;
+    public IntPtr Metadata;
+    public long Timestamp;
+}
+
+// Timecode value that lets NDI generate timecodes from its own clock
+// (equivalent to NDIlib_send_timecode_synthesize)
+public static class Timecode
+{
+    public const long Synthesize = long.MaxValue;
+}
+
 // Tally data structure (equivalent to NDIlib_tally_t)
 [StructLayout(LayoutKind.Sequential)]
 public struct Tally
