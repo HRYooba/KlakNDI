@@ -13,15 +13,19 @@ public sealed partial class NdiSender : MonoBehaviour
     FormatConverter _converter;
     System.Action<AsyncGPUReadbackRequest> _onReadback;
 
+    void PrepareSendInstance()
+    {
+        if (_send != null) return;
+
+        // Game view capture method: Borrow the shared sender instance.
+        var send = captureMethod == CaptureMethod.GameView
+          ? SharedInstance.GameViewSend : Interop.Send.Create(ndiName);
+        lock (SharedInstance.SendLock) _send = send;
+    }
+
     void PrepareSenderObjects()
     {
-        if (_send == null)
-        {
-            // Game view capture method: Borrow the shared sender instance.
-            var send = captureMethod == CaptureMethod.GameView
-              ? SharedInstance.GameViewSend : Interop.Send.Create(ndiName);
-            lock (SharedInstance.SendLock) _send = send;
-        }
+        PrepareSendInstance();
 
         // Private object initialization
         if (_pool == null) _pool = new ReadbackPool();
@@ -204,9 +208,10 @@ public sealed partial class NdiSender : MonoBehaviour
 
     // Sends interleaved audio samples with this sender's NDI source.
     // Thread-safe: this can be called from the audio thread (for example,
-    // from OnAudioFilterRead). The audio rides on the NDI source that the
-    // video capture creates, so it does nothing until the first video frame
-    // is captured or while the sender is inactive.
+    // from OnAudioFilterRead). With a video capture method, the audio rides on
+    // the NDI source that the video capture creates, so it does nothing until
+    // the first video frame is captured. It also does nothing while the sender
+    // is inactive.
     // Senders in Game View mode share one NDI source, so audio sent from
     // several of them is mixed into the same stream.
     public unsafe void SendAudio
@@ -284,6 +289,13 @@ public sealed partial class NdiSender : MonoBehaviour
             #endif
 
             _attachedCamera = sourceCamera;
+        }
+        else if (captureMethod == CaptureMethod.AudioOnly)
+        {
+            // No video capture creates the NDI source, so it's created here.
+            // Audio only flows in Play Mode, so no source is published while
+            // editing.
+            if (Application.isPlaying) PrepareSendInstance();
         }
         else
         {

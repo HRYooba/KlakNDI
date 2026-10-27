@@ -101,7 +101,7 @@ The **NDI Sender** component (`NdiSender`) sends a video stream from a given
 video source.
 
 **NDI Name** - Specify the name of the NDI endpoint (only available in the
-Camera/Texture capture method).
+Camera/Texture/Audio Only capture method).
 
 **Keep Alpha** - Enable this checkbox to make the stream contain the alpha
 channel. You can disable it to reduce the bandwidth.
@@ -114,6 +114,8 @@ options:
     supports URP and HDRP.
   - Texture - The sender captures frames from a texture asset. You can also use
     a render texture with this option.
+  - Audio Only - The sender sends no video. The NDI source carries only the
+    audio passed to `SendAudio`, and it appears in Play Mode.
 
 You can attach metadata using the C# `.metadata` property.
 
@@ -124,9 +126,10 @@ as black. The `sentTextureRegion` property returns the region that is actually
 sent (with the width rounded down to a packable value).
 
 You can send audio samples with the C# `SendAudio` method. It can be called from
-any thread, including the audio thread. The audio rides on the NDI source that
-the video capture creates, so samples are dropped until the first video frame
-is captured. The **NDI Audio Capture** component
+any thread, including the audio thread. With a video capture method, the audio
+rides on the NDI source that the video capture creates, so samples are dropped
+until the first video frame is captured. Use the Audio Only capture method to
+send audio without video. The **NDI Audio Capture** component
 (`NdiAudioCapture`) does this for you: attach it to the GameObject with the
 AudioListener to send the final mix, or to a GameObject with an AudioSource to
 send that source only.

@@ -2,7 +2,9 @@ using UnityEngine;
 
 namespace Klak.Ndi {
 
-public enum CaptureMethod { GameView, Camera, Texture }
+// AudioOnly sends no video; the NDI source carries only the audio passed to
+// SendAudio.
+public enum CaptureMethod { GameView, Camera, Texture, AudioOnly }
 
 public sealed partial class NdiSender : MonoBehaviour
 {

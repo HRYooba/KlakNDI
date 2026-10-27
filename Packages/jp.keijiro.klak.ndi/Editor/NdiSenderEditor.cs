@@ -12,6 +12,10 @@ sealed class NdiSenderEditor : UnityEditor.Editor
         public static Label NdiName = "NDI Name";
     }
 
+    static readonly string AudioOnlyNote =
+      "Sends only the audio passed to SendAudio (for example, by an NDI " +
+      "Audio Capture). The NDI source appears in Play Mode.";
+
     #pragma warning disable CS0649
 
     AutoProperty _ndiName;
@@ -54,6 +58,11 @@ sealed class NdiSenderEditor : UnityEditor.Editor
             EditorGUILayout.PropertyField(_sourceTexture);
             EditorGUILayout.PropertyField(_sourceRect);
         }
+
+        // Audio Only
+        if (!_captureMethod.Target.hasMultipleDifferentValues &&
+            _captureMethod.Target.enumValueIndex == (int)CaptureMethod.AudioOnly)
+            EditorGUILayout.HelpBox(AudioOnlyNote, MessageType.None);
 
         EditorGUI.indentLevel--;
 
