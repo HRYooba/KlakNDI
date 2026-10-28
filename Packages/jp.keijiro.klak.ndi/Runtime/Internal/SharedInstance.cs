@@ -9,6 +9,12 @@ static class SharedInstance
     static public Interop.Find Find
       => _find ?? InitializeFind();
 
+    // Comma-separated addresses the find object queries directly. Changing
+    // it recreates the find object on the next access.
+    static public string ExtraIPs
+      { get => _extraIPs;
+        set => SetExtraIPs(value); }
+
     // NDI send object for the game view
     static public Interop.Send GameViewSend
       => _gameViewSend ?? InitializeGameViewSend();
@@ -25,12 +31,21 @@ static class SharedInstance
     #region Shared object implementation
 
     static Interop.Find _find;
+    static string _extraIPs;
 
     static Interop.Find InitializeFind()
     {
-        _find = Interop.Find.Create();
+        _find = Interop.Find.Create(_extraIPs);
         SetFinalizer();
         return _find;
+    }
+
+    static void SetExtraIPs(string extraIPs)
+    {
+        if (_extraIPs == extraIPs) return;
+        _extraIPs = extraIPs;
+        _find?.Dispose();
+        _find = null;
     }
 
     static Interop.Send _gameViewSend;

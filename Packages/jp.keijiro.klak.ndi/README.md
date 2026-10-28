@@ -164,9 +164,11 @@ Tips for Scripting
 You can enumerate currently available NDI sources using the NDI Finder class
 (`NdiFinder`). See the [Source Selector] example for usage.
 
-When multicast discovery doesn't reach the senders, create a finder with
-`Interop.Find.Create("192.168.0.10,192.168.0.11")` to query those machines
-directly (the same as the Extra IPs setting of NDI Access Manager).
+When multicast discovery doesn't reach the senders, set
+`NdiReceiver.extraIPs = "192.168.0.10,192.168.0.11"` to query those machines
+directly (the same as the Extra IPs setting of NDI Access Manager). The setting
+is shared by all receivers and `NdiFinder`. To use a separate finder, create one
+with `Interop.Find.Create("192.168.0.10,192.168.0.11")`.
 
 [Source Selector]: URP/Assets/Script/SourceSelector.cs
 

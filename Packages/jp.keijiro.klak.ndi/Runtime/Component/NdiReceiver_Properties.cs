@@ -6,6 +6,13 @@ public sealed partial class NdiReceiver : MonoBehaviour
 {
     #region NDI source settings
 
+    // Comma-separated addresses of machines to query directly, shared by all
+    // receivers and NdiFinder. Use it when multicast discovery doesn't reach
+    // the senders (the same as the Extra IPs setting of NDI Access Manager).
+    public static string extraIPs
+      { get => SharedInstance.ExtraIPs;
+        set => SharedInstance.ExtraIPs = value; }
+
     [SerializeField] string _ndiName = null;
     string _ndiNameRuntime;
 
