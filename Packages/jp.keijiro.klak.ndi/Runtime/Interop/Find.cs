@@ -21,7 +21,27 @@ public class Find : SafeHandleZeroOrMinusOneIsInvalid
     #region Public methods
 
     public static Find Create()
-      => _Create(new Settings { ShowLocalSources = true });
+      => Create(null);
+
+    // Extra IPs: comma-separated addresses of machines to query directly, for
+    // networks where multicast discovery doesn't reach the senders.
+    public static Find Create(string extraIPs)
+    {
+        if (string.IsNullOrWhiteSpace(extraIPs))
+            return _Create(new Settings { ShowLocalSources = true });
+
+        // NDIlib_find_create_v2 copies the string, so it's freed right after.
+        var ips = Marshal.StringToHGlobalAnsi(extraIPs);
+        try
+        {
+            return _Create(new Settings { ShowLocalSources = true,
+                                          ExtraIPs = ips });
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(ips);
+        }
+    }
 
     public Span<Source> CurrentSources
       => GetCurrentSourcesAsSpan();
