@@ -70,24 +70,6 @@ public sealed partial class NdiSender : MonoBehaviour
       { get => _sourceTexture;
         set => _sourceTexture = value; }
 
-    // Region of the source texture to send, in pixels from the bottom-left
-    // corner. A zero-sized region sends the whole texture. The region may
-    // extend outside the texture; those pixels are sent as black.
-    [SerializeField] RectInt _sourceRect = default;
-
-    public RectInt sourceRect
-      { get => _sourceRect;
-        set => _sourceRect = value; }
-
-    // Region of the source texture that the Texture capture method actually
-    // sends (after the zero-size fallback and the width rounding), or null
-    // when this sender doesn't send a texture region. It reads the serialized
-    // settings, so it also works before the component initializes.
-    public RectInt? sentTextureRegion
-      => _captureMethod == CaptureMethod.Texture && _sourceTexture != null
-           ? ResolveRegion(_sourceTexture, _sourceRect, _keepAlpha)
-           : (RectInt?)null;
-
     #endregion
 
     #region Runtime property

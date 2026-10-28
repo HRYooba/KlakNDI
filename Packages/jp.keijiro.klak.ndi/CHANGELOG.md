@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [2.2.0-hryooba.8] - 2026-10-28
+
+### Removed
+
+- NDI Sender: Source Rect (`sourceRect`) and `sentTextureRegion`. The Texture
+  capture method sends the whole source texture again, as the original package
+  does. To send a part of a texture, copy that part into a texture of its own.
+
 ## [2.2.0-hryooba.7] - 2026-10-28
 
 ### Added

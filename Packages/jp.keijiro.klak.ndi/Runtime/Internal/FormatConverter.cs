@@ -63,16 +63,13 @@ sealed class FormatConverter : IDisposable
 
     // Immediate mode version
     public ComputeBuffer Encode(Texture source, bool enableAlpha, bool vflip)
-      => Encode(source, new RectInt(0, 0, source.width, source.height),
-                enableAlpha, vflip);
+      => Encode(source, source.width, source.height, enableAlpha, vflip);
 
-    // Immediate mode version with a source region
-    // The region may extend outside the source; those pixels become black.
+    // Immediate mode version encoding the width x height part of the source
+    // from its origin. The size must not exceed the source.
     public ComputeBuffer Encode
-      (Texture source, RectInt region, bool enableAlpha, bool vflip)
+      (Texture source, int width, int height, bool enableAlpha, bool vflip)
     {
-        var width = region.width;
-        var height = region.height;
         var dataCount = Util.FrameDataSize(width, height, enableAlpha) / 4;
 
         // Reallocate the output buffer when the output size was changed.
@@ -90,7 +87,6 @@ sealed class FormatConverter : IDisposable
         var compute = _resources.encoderCompute;
         var pass = (enableAlpha ? 2 : 0) + (Util.InGammaMode ? 0 : 1);
         compute.SetFloat("VFlip", vflip ? 1 : 0);
-        compute.SetInts("Offset", region.x, region.y);
         compute.SetInts("FrameSize", width, height);
         compute.SetTexture(pass, "Source", source);
         compute.SetBuffer(pass, "Destination", _encoderOutput);
@@ -122,7 +118,6 @@ sealed class FormatConverter : IDisposable
         var compute = _resources.encoderCompute;
         var pass = (enableAlpha ? 2 : 0) + (Util.InGammaMode ? 0 : 1);
         cb.SetComputeFloatParam(compute, "VFlip", vflip ? 1 : 0);
-        cb.SetComputeIntParams(compute, "Offset", 0, 0);
         cb.SetComputeIntParams(compute, "FrameSize", width, height);
         cb.SetComputeTextureParam(compute, pass, "Source", source);
         cb.SetComputeBufferParam(compute, pass, "Destination", _encoderOutput);

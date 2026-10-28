@@ -1,6 +1,6 @@
 {
   "name": "jp.keijiro.klak.ndi",
-  "version": "2.2.0-hryooba.7",
+  "version": "2.2.0-hryooba.8",
   "displayName": "KlakNDI (HRYooba fork)",
   "description": "NewTek NDI® plugin for Unity",
   "unity": "2022.3",
@@ -10,5 +10,5 @@
   "documentationUrl": "https://github.com/HRYooba/KlakNDI",
   "licensesUrl": "https://github.com/keijiro/KlakNDI/blob/main/LICENSE",
   "license": "SEE LICENSE IN LICENSE",
-  "_upm": { "changelog": "<b>Added</b><br>- NDI Sender: <i>sentTextureRegion</i> property returning the texture region that is actually sent." }
+  "_upm": { "changelog": "<b>Removed</b><br>- NDI Sender: Source Rect (<i>sourceRect</i>) and <i>sentTextureRegion</i>. The Texture capture method sends the whole source texture again, as the original package does. To send a part of a texture, copy that part into a texture of its own." }
 }

@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [2.2.0-hryooba.8] - 2026-10-28
+
+### Removed
+
+- NDI Sender: Source Rect (`sourceRect`) and `sentTextureRegion`. The Texture
+  capture method sends the whole source texture again, as the original package
+  does. To send a part of a texture, copy that part into a texture of its own.
+
+## [2.2.0-hryooba.7] - 2026-10-28
+
+### Added
+
+- NDI Receiver: Extra IPs property (`receiverExtraIPs`) editable in the
+  inspector. The shared finder queries the addresses of all the enabled
+  receivers together with the static `extraIPs`.
+- NDI Receiver: `rejectedFrameCount` property counting the frames the decoder
+  rejected.
+- NDI Receiver: `NdiReceiver.Update` profiler marker.
+
+### Changed
+
+- NDI Receiver: A source name without parentheses also matches the stream name
+  part of "MACHINE (STREAM)". An exact match takes precedence, and among
+  several machines the first name in ordinal order is chosen (with a warning).
+- NDI Receiver: The decoder accepts frames with alpha (UYVA) of any even width
+  (it required a multiple of 4) and frames with padded rows (it required a
+  line stride of width x 2).
+- NDI Receiver: While the source isn't found, the receiver tries to find it
+  once a second instead of on every update.
+- NDI Receiver: The warning about an undecodable frame is shown once per frame
+  layout instead of for every frame.
+
+## [2.2.0-hryooba.6] - 2026-10-28
+
+### Added
+
+- NDI Receiver: `videoFrameCaptured` event, invoked for every captured video
+  frame (including the ones superseded within the same update) before it's
+  released.
+- NDI Receiver: `decodedFrameCount` property counting the frames decoded into
+  the texture.
+
+### Changed
+
+- NDI Receiver: The receiver drains the frame queue on every update and decodes
+  only the newest video frame, also when audio receiving is disabled. It no
+  longer falls behind the source when updated less often than the source.
+
+## [2.2.0-hryooba.5] - 2026-10-28
+
+### Added
+
+- NDI Receiver: static `extraIPs` property, shared by all receivers and
+  `NdiFinder`, for querying senders at given addresses directly.
+
 ## [2.2.0-hryooba.4] - 2026-10-28
 
 ### Added

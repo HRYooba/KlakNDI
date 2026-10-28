@@ -65,24 +65,9 @@ public sealed partial class NdiSender : MonoBehaviour
 
     #region Capture coroutine for the Texture/GameView capture methods
 
-    // Region of the source texture to send
-    RectInt SourceRegion
-      => ResolveRegion(sourceTexture, sourceRect, keepAlpha);
-
-    // The whole texture when the rect is unset, with the width rounded down
-    // to what the frame format can pack.
-    static RectInt ResolveRegion(Texture texture, RectInt rect, bool alpha)
-    {
-        var region = rect.width > 0 && rect.height > 0
-          ? rect : new RectInt(0, 0, texture.width, texture.height);
-        region.width = AlignWidth(region.width, alpha);
-        return region;
-    }
-
-    // Width rounded down to what the frame format can pack
-    static int AlignWidth(int width, bool alpha) => width & (alpha ? ~3 : ~1);
-
-    int AlignWidth(int width) => AlignWidth(width, keepAlpha);
+    // Width rounded down to what the frame format can pack. The columns
+    // beyond it on the right edge aren't sent.
+    int AlignWidth(int width) => width & (keepAlpha ? ~3 : ~1);
 
     System.Collections.IEnumerator CaptureCoroutine()
     {
@@ -103,15 +88,15 @@ public sealed partial class NdiSender : MonoBehaviour
 
             // Texture capture method
             if (captureMethod == CaptureMethod.Texture && sourceTexture != null &&
-                SourceRegion is var region &&
-                region.width > 0 && region.height > 0)
+                (AlignWidth(sourceTexture.width), sourceTexture.height)
+                  is var (tw, th) && tw > 0 && th > 0)
             {
                 // Pixel format conversion
                 var buffer = _converter.Encode
-                  (sourceTexture, region, keepAlpha, true);
+                  (sourceTexture, tw, th, keepAlpha, true);
 
                 // Readback entry allocation and request
-                _pool.NewEntry(region.width, region.height, keepAlpha, metadata)
+                _pool.NewEntry(tw, th, keepAlpha, metadata)
                      .RequestReadback(buffer, _onReadback);
             }
 
@@ -125,8 +110,7 @@ public sealed partial class NdiSender : MonoBehaviour
 
                 // Pixel format conversion
                 w = AlignWidth(w);
-                var buffer = _converter.Encode
-                  (tempRT, new RectInt(0, 0, w, h), keepAlpha, false);
+                var buffer = _converter.Encode(tempRT, w, h, keepAlpha, false);
                 RenderTexture.ReleaseTemporary(tempRT);
 
                 // Readback entry allocation and request

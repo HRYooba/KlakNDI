@@ -11,21 +11,8 @@ Texture2D<float4> Source;
 RWStructuredBuffer<uint> Destination;
 float VFlip;
 
-// Source region origin (in pixels, may be negative) and output frame size
-int2 Offset;
+// Output frame size (the part of the source from its origin to encode)
 uint2 FrameSize;
-
-// Source pixel at a frame position
-// Out-of-range loads are only defined on some graphics APIs, so pixels
-// outside the source texture are returned as black explicitly.
-float4 LoadSource(uint2 id, uint dx)
-{
-    uint w, h;
-    Source.GetDimensions(w, h);
-    int2 p = Offset + int2(id.x + dx, id.y);
-    if (any(p < 0) || p.x >= (int)w || p.y >= (int)h) return 0;
-    return Source[p];
-}
 
 // Linear to sRGB conversion
 float4 Linear_to_sRGB(float4 c)
@@ -121,8 +108,8 @@ void EncodeUYVY_sRGB(uint2 id : SV_DispatchThreadID)
 {
     if (id.x * 2 >= FrameSize.x || id.y >= FrameSize.y) return;
     uint2 sp = id * uint2(2, 1);
-    float4 s0 = LoadSource(sp, 0);
-    float4 s1 = LoadSource(sp, 1);
+    float4 s0 = Source[sp + uint2(0, 0)];
+    float4 s1 = Source[sp + uint2(1, 0)];
     EncodeUYVY(id, s0, s1);
 }
 
@@ -131,8 +118,8 @@ void EncodeUYVY_Linear(uint2 id : SV_DispatchThreadID)
 {
     if (id.x * 2 >= FrameSize.x || id.y >= FrameSize.y) return;
     uint2 sp = id * uint2(2, 1);
-    float4 s0 = Linear_to_sRGB(LoadSource(sp, 0));
-    float4 s1 = Linear_to_sRGB(LoadSource(sp, 1));
+    float4 s0 = Linear_to_sRGB(Source[sp + uint2(0, 0)]);
+    float4 s1 = Linear_to_sRGB(Source[sp + uint2(1, 0)]);
     EncodeUYVY(id, s0, s1);
 }
 
@@ -141,10 +128,10 @@ void EncodeUYVA_sRGB(uint2 id : SV_DispatchThreadID)
 {
     if (id.x * 4 >= FrameSize.x || id.y >= FrameSize.y) return;
     uint2 sp = id * uint2(4, 1);
-    float4 s0 = LoadSource(sp, 0);
-    float4 s1 = LoadSource(sp, 1);
-    float4 s2 = LoadSource(sp, 2);
-    float4 s3 = LoadSource(sp, 3);
+    float4 s0 = Source[sp + uint2(0, 0)];
+    float4 s1 = Source[sp + uint2(1, 0)];
+    float4 s2 = Source[sp + uint2(2, 0)];
+    float4 s3 = Source[sp + uint2(3, 0)];
     EncodeUYVA(id, s0, s1, s2, s3);
 }
 
@@ -153,9 +140,9 @@ void EncodeUYVA_Linear(uint2 id : SV_DispatchThreadID)
 {
     if (id.x * 4 >= FrameSize.x || id.y >= FrameSize.y) return;
     uint2 sp = id * uint2(4, 1);
-    float4 s0 = Linear_to_sRGB(LoadSource(sp, 0));
-    float4 s1 = Linear_to_sRGB(LoadSource(sp, 1));
-    float4 s2 = Linear_to_sRGB(LoadSource(sp, 2));
-    float4 s3 = Linear_to_sRGB(LoadSource(sp, 3));
+    float4 s0 = Linear_to_sRGB(Source[sp + uint2(0, 0)]);
+    float4 s1 = Linear_to_sRGB(Source[sp + uint2(1, 0)]);
+    float4 s2 = Linear_to_sRGB(Source[sp + uint2(2, 0)]);
+    float4 s3 = Linear_to_sRGB(Source[sp + uint2(3, 0)]);
     EncodeUYVA(id, s0, s1, s2, s3);
 }

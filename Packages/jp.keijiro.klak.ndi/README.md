@@ -24,8 +24,6 @@ replacement for the original package.
   (a multiple of 4 with alpha when sending). The height has no restriction.
   The receiver decodes frames with alpha (UYVA) of any even width and frames
   with padded rows.
-- Source region: the NDI Sender can send a rectangular region of a source
-  texture (Texture capture method).
 - Audio sending: the NDI Sender can send audio samples, and the NDI Audio
   Capture component forwards the audio passing through its GameObject.
 - Audio receiving: the NDI Receiver can play received audio through an
@@ -37,7 +35,7 @@ To install this fork, add the following line to the `dependencies` section of
 `Packages/manifest.json` (replace the tag with the version you need):
 
 ```
-"jp.keijiro.klak.ndi": "https://github.com/HRYooba/KlakNDI.git?path=Packages/jp.keijiro.klak.ndi#v2.2.0-hryooba.2"
+"jp.keijiro.klak.ndi": "https://github.com/HRYooba/KlakNDI.git?path=Packages/jp.keijiro.klak.ndi#v2.2.0-hryooba.8"
 ```
 
 System Requirements
@@ -121,11 +119,10 @@ options:
 
 You can attach metadata using the C# `.metadata` property.
 
-With the Texture capture method, **Source Rect** selects a region of the source
-texture in pixels from the bottom-left corner. Leave it zero-sized to send the
-whole texture. The region may extend outside the texture; those pixels are sent
-as black. The `sentTextureRegion` property returns the region that is actually
-sent (with the width rounded down to a packable value).
+The sender sends the whole frame, with the width rounded down to a multiple of
+2 (a multiple of 4 with alpha); the columns beyond it on the right edge aren't
+sent. To send a part of a texture, copy that part into a texture of its own
+and send it.
 
 You can send audio samples with the C# `SendAudio` method. It can be called from
 any thread, including the audio thread. With a video capture method, the audio
