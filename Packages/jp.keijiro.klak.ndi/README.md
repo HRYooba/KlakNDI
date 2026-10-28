@@ -153,6 +153,13 @@ renderer.
 
 You can extract metadata using the C# `.metadata` property.
 
+On every update, the receiver takes all the frames that have arrived and
+decodes only the newest video frame. The C# `.decodedFrameCount` property counts
+the decoded frames, so comparing it between updates tells whether the texture
+was renewed. The `.videoFrameCaptured` event is invoked on the main thread for
+every captured video frame, including the ones skipped in favor of a newer
+frame. The frame data is valid only during the call.
+
 Enable **Receive Audio** and add an AudioSource to the same GameObject to play
 the received audio. The received audio is mixed into the AudioSource output, and
 the AudioSource is started automatically in Play Mode. Frames with padded rows

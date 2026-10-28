@@ -1,5 +1,3 @@
-using IntPtr = System.IntPtr;
-
 namespace Klak.Ndi {
 
 // Small helper class for NDI recv interop
@@ -23,14 +21,6 @@ static class RecvHelper
             Bandwidth = Interop.Bandwidth.Highest };
 
         return Interop.Recv.Create(opt);
-    }
-
-    public static Interop.VideoFrame? TryCaptureVideoFrame(Interop.Recv recv)
-    {
-        Interop.VideoFrame video;
-        var type = recv.Capture(out video, IntPtr.Zero, IntPtr.Zero, 0);
-        if (type != Interop.FrameType.Video) return null;
-        return (Interop.VideoFrame?)video;
     }
 }
 

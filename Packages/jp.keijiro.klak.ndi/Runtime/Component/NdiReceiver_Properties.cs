@@ -74,6 +74,15 @@ public sealed partial class NdiReceiver : MonoBehaviour
 
     public Interop.Recv internalRecvObject => _recv;
 
+    // Number of frames decoded into the texture. It only increases, so
+    // comparing it between updates tells whether the texture was renewed.
+    public long decodedFrameCount { get; private set; }
+
+    // Invoked on the main thread for every captured video frame, including
+    // the ones superseded by a newer frame within the same update. The frame
+    // data is valid only during the call.
+    public event System.Action<Interop.VideoFrame> videoFrameCaptured;
+
     #endregion
 
     #region Resources asset reference

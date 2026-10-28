@@ -48,16 +48,10 @@ public sealed partial class NdiReceiver : MonoBehaviour
         PrepareReceiverObjects();
         if (_recv == null) return null;
 
-        if (!receiveAudio)
-        {
-            // Video frame capturing
-            var frameOrNull = RecvHelper.TryCaptureVideoFrame(_recv);
-            if (frameOrNull == null) return null;
-            return DecodeAndFree((Interop.VideoFrame)frameOrNull);
-        }
-
-        // Audio arrives more often than video, so drain the queue: push every
-        // audio frame and keep only the newest video frame.
+        // Drain the queue and keep only the newest video frame, so that a
+        // receiver updated less often than the source doesn't fall behind it.
+        // Audio frames are pushed to the ring buffer when audio is enabled.
+        var withAudio = receiveAudio;
         var video = default(Interop.VideoFrame);
         var hasVideo = false;
 
@@ -65,13 +59,17 @@ public sealed partial class NdiReceiver : MonoBehaviour
         {
             for (var i = 0; i < MaxCapturesPerUpdate; i++)
             {
-                var type = _recv.Capture
-                  (out var v, out var a, IntPtr.Zero, 0);
+                Interop.VideoFrame v;
+                var a = default(Interop.AudioFrame);
+                var type = withAudio
+                  ? _recv.Capture(out v, out a, IntPtr.Zero, 0)
+                  : _recv.Capture(out v, IntPtr.Zero, IntPtr.Zero, 0);
 
                 if (type == Interop.FrameType.Video)
                 {
                     if (hasVideo) _recv.FreeVideoFrame(video);
                     (video, hasVideo) = (v, true);
+                    videoFrameCaptured?.Invoke(v);
                 }
                 else if (type == Interop.FrameType.Audio)
                 {
@@ -102,6 +100,8 @@ public sealed partial class NdiReceiver : MonoBehaviour
             var rt = _converter.Decode
               (frame.Width, frame.Height, frame.LineStride,
                Util.HasAlpha(frame.FourCC), frame.Data);
+
+            if (rt != null) decodedFrameCount++;
 
             // Metadata retrieval
             if (frame.Metadata != IntPtr.Zero)
