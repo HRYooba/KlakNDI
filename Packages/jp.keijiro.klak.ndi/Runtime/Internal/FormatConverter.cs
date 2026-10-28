@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using IDisposable = System.IDisposable;
 using IntPtr = System.IntPtr;
+using Marshal = System.Runtime.InteropServices.Marshal;
 
 namespace Klak.Ndi {
 
@@ -140,15 +141,35 @@ sealed class FormatConverter : IDisposable
 
     public RenderTexture LastDecoderOutput => _decoderOutput;
 
-    // Received frames come from the network. Frames the decoder can't lay out
-    // (non-positive, odd, or unaligned-with-alpha widths) are rejected
-    // instead of being decoded with out-of-frame indices.
-    // The decoder reads tightly packed rows, so padded rows are rejected too.
+    // Received frames come from the network, so the dimensions are checked
+    // before they size any buffer. The decoder reads two pixels from a 32-bit
+    // word of the UYVY plane, so the width must be even and the line stride
+    // must be a multiple of 4 that holds the row. Padded rows are read with
+    // the stride. The alpha plane of UYVA follows the UYVY plane, and its line
+    // stride is half of the UYVY one.
     static bool IsDecodable
       (int width, int height, int stride, bool alpha, IntPtr data)
       => data != IntPtr.Zero && width > 0 && height > 0 &&
-         (width & (alpha ? 3 : 1)) == 0 && stride == width * 2 &&
-         (long)width * height <= int.MaxValue / 4;
+         (width & 1) == 0 && (stride & 3) == 0 && stride >= width * 2 &&
+         (long)stride * height * (alpha ? 3 : 2) / 2 <= int.MaxValue;
+
+    static long DecoderDataSize(int height, int stride, bool alpha)
+      => (long)stride * height * (alpha ? 3 : 2) / 2;
+
+    // The warning about a rejected frame is shown once per frame layout, as
+    // the frames of a source usually share one.
+    (int, int, int, bool) _warnedLayout;
+
+    void WarnRejectedFrame(int width, int height, int stride, bool alpha)
+    {
+        var layout = (width, height, stride, alpha);
+        if (_warnedLayout == layout) return;
+        _warnedLayout = layout;
+        Debug.LogWarning("[KlakNDI] Unsupported frame: " +
+          $"{width}x{height} {(alpha ? "UYVA" : "UYVY")} " +
+          $"(line stride {stride} bytes). The width must be even, and the " +
+          "line stride must be a multiple of 4 not less than width x 2.");
+    }
 
     // Returns null when the frame is rejected.
     public RenderTexture Decode
@@ -156,11 +177,15 @@ sealed class FormatConverter : IDisposable
     {
         if (!IsDecodable(width, height, stride, enableAlpha, data))
         {
-            CheckDimensions(width, enableAlpha);
+            WarnRejectedFrame(width, height, stride, enableAlpha);
             return null;
         }
 
-        var dataCount = Util.FrameDataSize(width, height, enableAlpha) / 4;
+        // The UYVA data may end in the middle of a 32-bit word.
+        var bytes = DecoderDataSize(height, stride, enableAlpha);
+        var words = (int)(bytes / 4);
+        var tail = (int)(bytes % 4);
+        var dataCount = words + (tail > 0 ? 1 : 0);
 
         // Reallocate the input buffer when the input size was changed.
         if (_decoderInput != null && _decoderInput.count != dataCount)
@@ -179,7 +204,6 @@ sealed class FormatConverter : IDisposable
         // Output buffer allocation
         if (_decoderOutput == null)
         {
-            CheckDimensions(width, enableAlpha);
         #if KLAK_NDI_ISSUE200_WORKAROUND
             _decoderOutput = new RenderTexture(width, height, 0, RenderTextureFormat.ARGBHalf);
         #else
@@ -190,7 +214,16 @@ sealed class FormatConverter : IDisposable
         }
 
         // Input buffer update
-        _decoderInput.SetData(data, dataCount, 4);
+        // The tail bytes are copied separately so that nothing is read
+        // beyond the frame data.
+        _decoderInput.SetData(data, words, 4);
+        if (tail > 0)
+        {
+            var last = 0u;
+            for (var i = 0; i < tail; i++)
+                last |= (uint)Marshal.ReadByte(data, words * 4 + i) << (i * 8);
+            _decoderInput.SetData(new[] { last }, 0, words, 1);
+        }
 
         // Kenel select
         var pass = (enableAlpha ? 2 : 0);
@@ -200,12 +233,13 @@ sealed class FormatConverter : IDisposable
         if (!Util.InGammaMode && Util.UsingMetal) pass++;
 
         // Decoder compute dispatching
+        // Each thread decodes two pixels.
         var compute = _resources.decoderCompute;
         compute.SetInts("FrameSize", width, height);
+        compute.SetInt("Stride", stride / 4);
         compute.SetBuffer(pass, "Source", _decoderInput);
         compute.SetTexture(pass, "Destination", _decoderOutput);
-        compute.Dispatch
-          (pass, GroupsX(width, enableAlpha), GroupsY(height), 1);
+        compute.Dispatch(pass, (width / 2 + 7) / 8, GroupsY(height), 1);
 
         return _decoderOutput;
     }

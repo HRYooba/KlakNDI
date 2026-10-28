@@ -1,4 +1,5 @@
 ﻿using Unity.Collections.LowLevel.Unsafe;
+using Unity.Profiling;
 using UnityEngine;
 using IntPtr = System.IntPtr;
 using Marshal = System.Runtime.InteropServices.Marshal;
@@ -15,17 +16,42 @@ public sealed partial class NdiReceiver : MonoBehaviour
     MaterialPropertyBlock _override;
     readonly AudioRingBuffer _audioBuffer = new AudioRingBuffer();
 
+    // Interval of the attempts to find the source (in seconds)
+    // Finding a source marshals the whole source list, so it's not repeated
+    // on every update while the source is missing.
+    const float RecvRetryInterval = 1;
+
+    float _nextRecvAttempt;
+
     void PrepareReceiverObjects()
     {
-        if (_recv == null) _recv = RecvHelper.TryCreateRecv(ndiName);
+        if (_recv == null && Time.realtimeSinceStartup >= _nextRecvAttempt)
+        {
+            _recv = RecvHelper.TryCreateRecv(ndiName);
+            if (_recv == null)
+                _nextRecvAttempt = Time.realtimeSinceStartup + RecvRetryInterval;
+        }
         if (_converter == null) _converter = new FormatConverter(_resources);
         if (_override == null) _override = new MaterialPropertyBlock();
     }
 
+    // True while frames taken from _recv are held. The videoFrameCaptured
+    // handler may restart or disable the receiver, so the release is deferred
+    // until the held frames are freed.
+    bool _capturing;
+    bool _releasePending;
+
     void ReleaseReceiverObjects()
     {
+        if (_capturing)
+        {
+            _releasePending = true;
+            return;
+        }
+
         _recv?.Dispose();
         _recv = null;
+        _nextRecvAttempt = 0;
 
         _audioBuffer.Clear();
 
@@ -52,8 +78,11 @@ public sealed partial class NdiReceiver : MonoBehaviour
         // receiver updated less often than the source doesn't fall behind it.
         // Audio frames are pushed to the ring buffer when audio is enabled.
         var withAudio = receiveAudio;
+        var recv = _recv;
         var video = default(Interop.VideoFrame);
         var hasVideo = false;
+
+        _capturing = true;
 
         try
         {
@@ -62,37 +91,49 @@ public sealed partial class NdiReceiver : MonoBehaviour
                 Interop.VideoFrame v;
                 var a = default(Interop.AudioFrame);
                 var type = withAudio
-                  ? _recv.Capture(out v, out a, IntPtr.Zero, 0)
-                  : _recv.Capture(out v, IntPtr.Zero, IntPtr.Zero, 0);
+                  ? recv.Capture(out v, out a, IntPtr.Zero, 0)
+                  : recv.Capture(out v, IntPtr.Zero, IntPtr.Zero, 0);
 
                 if (type == Interop.FrameType.Video)
                 {
-                    if (hasVideo) _recv.FreeVideoFrame(video);
+                    if (hasVideo) recv.FreeVideoFrame(video);
                     (video, hasVideo) = (v, true);
                     videoFrameCaptured?.Invoke(v);
+                    // The handler restarted or disabled the receiver.
+                    if (_releasePending) break;
                 }
                 else if (type == Interop.FrameType.Audio)
                 {
                     try { _audioBuffer.Push(a); }
-                    finally { _recv.FreeAudioFrame(a); }
+                    finally { recv.FreeAudioFrame(a); }
                 }
                 else
                 {
                     break;
                 }
             }
-        }
-        catch
-        {
-            // The held video frame is released before the exception leaves.
-            if (hasVideo) _recv.FreeVideoFrame(video);
-            throw;
-        }
 
-        return hasVideo ? DecodeAndFree(video) : null;
+            if (!hasVideo || _releasePending) return null;
+
+            // DecodeAndFree frees the frame even when it throws.
+            hasVideo = false;
+            return DecodeAndFree(recv, video);
+        }
+        finally
+        {
+            // The held video frame is freed before the recv object is
+            // released or an exception leaves.
+            if (hasVideo) recv.FreeVideoFrame(video);
+            _capturing = false;
+            if (_releasePending)
+            {
+                _releasePending = false;
+                ReleaseReceiverObjects();
+            }
+        }
     }
 
-    RenderTexture DecodeAndFree(in Interop.VideoFrame frame)
+    RenderTexture DecodeAndFree(Interop.Recv recv, in Interop.VideoFrame frame)
     {
         try
         {
@@ -101,7 +142,7 @@ public sealed partial class NdiReceiver : MonoBehaviour
               (frame.Width, frame.Height, frame.LineStride,
                Util.HasAlpha(frame.FourCC), frame.Data);
 
-            if (rt != null) decodedFrameCount++;
+            if (rt != null) decodedFrameCount++; else rejectedFrameCount++;
 
             // Metadata retrieval
             if (frame.Metadata != IntPtr.Zero)
@@ -114,7 +155,7 @@ public sealed partial class NdiReceiver : MonoBehaviour
         finally
         {
             // Video frame release
-            _recv.FreeVideoFrame(frame);
+            recv.FreeVideoFrame(frame);
         }
     }
 
@@ -137,12 +178,16 @@ public sealed partial class NdiReceiver : MonoBehaviour
 
     void OnEnable()
     {
+        _extraIPsRegistered = true;
+        SharedInstance.SetReceiverExtraIPs(this, _extraIPsRuntime);
         UpdateOutputSampleRate();
         AudioSettings.OnAudioConfigurationChanged += UpdateOutputSampleRate;
     }
 
     void OnDisable()
     {
+        _extraIPsRegistered = false;
+        SharedInstance.SetReceiverExtraIPs(this, null);
         AudioSettings.OnAudioConfigurationChanged -= UpdateOutputSampleRate;
         ReleaseReceiverObjects();
     }
@@ -166,8 +211,13 @@ public sealed partial class NdiReceiver : MonoBehaviour
             _audioBuffer.Read(data, channels, _outputSampleRate);
     }
 
+    static readonly ProfilerMarker UpdateMarker =
+      new ProfilerMarker("NdiReceiver.Update");
+
     void Update()
     {
+        using var _ = UpdateMarker.Auto();
+
         EnsureAudioSourcePlaying();
 
         var rt = TryReceiveFrame();

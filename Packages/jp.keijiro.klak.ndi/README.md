@@ -21,7 +21,9 @@ original package name, assembly names, and namespaces, so it works as a drop-in
 replacement for the original package.
 
 - Frames of arbitrary dimensions: the width only has to be a multiple of 2
-  (a multiple of 4 with alpha). The height has no restriction.
+  (a multiple of 4 with alpha when sending). The height has no restriction.
+  The receiver decodes frames with alpha (UYVA) of any even width and frames
+  with padded rows.
 - Source region: the NDI Sender can send a rectangular region of a source
   texture (Texture capture method).
 - Audio sending: the NDI Sender can send audio samples, and the NDI Audio
@@ -143,7 +145,16 @@ The **NDI Receiver** component (`NdiReceiver`) receives a video stream and
 feeds it to a renderer object or a render texture asset.
 
 **NDI Name** - Specify the name of the NDI source. You can edit the text field
-or use the selector to choose a name from currently available NDI sources.
+or use the selector to choose a name from currently available NDI sources. A
+name without parentheses also matches the stream name part of
+"MACHINE (STREAM)", so the receiver finds the stream on any machine. An exact
+match takes precedence.
+
+**Extra IPs** - Comma-separated addresses of machines to query directly when
+multicast discovery doesn't reach the senders (the same as the Extra IPs
+setting of NDI Access Manager). The sources are found by a single finder shared
+by all receivers and `NdiFinder`, which queries the addresses of all the
+enabled receivers together with the static `NdiReceiver.extraIPs`.
 
 **Target Texture** - The receiver copies the received frames into this render
 texture asset.
@@ -162,8 +173,19 @@ frame. The frame data is valid only during the call.
 
 Enable **Receive Audio** and add an AudioSource to the same GameObject to play
 the received audio. The received audio is mixed into the AudioSource output, and
-the AudioSource is started automatically in Play Mode. Frames with padded rows
-(line stride other than width x 2) are not supported and are skipped.
+the AudioSource is started automatically in Play Mode. The received audio is
+taken from the queue in `Update`, so a main thread stall longer than the
+buffered audio (from 50 ms up to 200 ms) interrupts the audio.
+
+The receiver decodes UYVY and UYVA (with alpha) frames of any even width,
+including frames with padded rows. Frames it can't decode (an odd width, or a
+line stride that isn't a multiple of 4 or is shorter than width x 2) are
+skipped with a warning shown once per frame layout. The `.rejectedFrameCount`
+property counts them.
+
+While the source isn't found, the receiver tries to find it once a second.
+The time spent in `Update` is recorded under the `NdiReceiver.Update` profiler
+marker.
 
 Tips for Scripting
 ------------------
@@ -173,9 +195,14 @@ You can enumerate currently available NDI sources using the NDI Finder class
 
 When multicast discovery doesn't reach the senders, set
 `NdiReceiver.extraIPs = "192.168.0.10,192.168.0.11"` to query those machines
-directly (the same as the Extra IPs setting of NDI Access Manager). The setting
-is shared by all receivers and `NdiFinder`. To use a separate finder, create one
-with `Interop.Find.Create("192.168.0.10,192.168.0.11")`.
+directly (the same as the Extra IPs setting of NDI Access Manager), or set the
+`.receiverExtraIPs` property (**Extra IPs**) of a receiver. The shared finder
+queries the static addresses and the ones of all the enabled receivers. When
+the combined addresses change (for example, a receiver with Extra IPs is
+disabled), the finder is recreated the next time it's used, and the receivers
+not connected yet wait for the discovery again (a few seconds). Connected
+receivers are not affected. To use a separate finder,
+create one with `Interop.Find.Create("192.168.0.10,192.168.0.11")`.
 
 [Source Selector]: URP/Assets/Script/SourceSelector.cs
 

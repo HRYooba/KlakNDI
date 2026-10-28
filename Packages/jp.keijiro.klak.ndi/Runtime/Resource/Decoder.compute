@@ -13,6 +13,10 @@ RWTexture2D<float4> Destination;
 // Frame dimensions (the destination texture has the same size)
 uint2 FrameSize;
 
+// Line stride of the UYVY plane in 32-bit words. The alpha plane of UYVA
+// follows the UYVY plane and its line stride is half of the UYVY one.
+uint Stride;
+
 // sRGB to linear conversion
 float4 sRGB_to_Linear(float4 c)
 {
@@ -48,51 +52,37 @@ float4 UnpackUYVY(uint v)
     return f;
 }
 
-// Packed alpha conversion
-float4 UnpackAAAA(uint v)
+// Alpha value of a byte in the alpha plane
+float ReadAlpha(uint offset)
 {
-    return (uint4(v, v >> 8, v >> 16, v >> 24) & 0xff) / 255.0;
+    uint word = Source[offset >> 2];
+    return ((word >> ((offset & 3) * 8)) & 0xff) / 255.0;
 }
 
-// UYVY decoder function
+// UYVY decoder function (two pixels)
 float2x4 DecodeUYVY(uint2 id)
 {
-    uint w = FrameSize.x;
-    uint h = FrameSize.y;
-
-    uint id_y = h - 1 - id.y;
-
-    uint sp = id_y * w / 2 + id.x;
-    float4 uyvy = UnpackUYVY(Source[sp]);
-
+    uint id_y = FrameSize.y - 1 - id.y;
+    float4 uyvy = UnpackUYVY(Source[id_y * Stride + id.x]);
     return float2x4(float4(YUV2RGB(uyvy.yxz), 1),
                     float4(YUV2RGB(uyvy.wxz), 1));
 }
 
-// UYVA decoder function
-float4x4 DecodeUYVA(uint2 id)
+// UYVA decoder function (two pixels)
+float2x4 DecodeUYVA(uint2 id)
 {
-    uint w = FrameSize.x;
-    uint h = FrameSize.y;
-
-    uint id_y = h - 1 - id.y;
-
-    uint sp1 = id_y * w / 2 + id.x * 2;
-    float4 uyvy01 = UnpackUYVY(Source[sp1 + 0]);
-    float4 uyvy23 = UnpackUYVY(Source[sp1 + 1]);
-
-    uint sp2 = id_y * w / 4 + id.x + w * h / 2;
-    float4 a0123 = UnpackAAAA(Source[sp2]);
-
-    return float4x4(float4(YUV2RGB(uyvy01.yxz), a0123.x),
-                    float4(YUV2RGB(uyvy01.wxz), a0123.y),
-                    float4(YUV2RGB(uyvy23.yxz), a0123.z),
-                    float4(YUV2RGB(uyvy23.wxz), a0123.w));
+    uint id_y = FrameSize.y - 1 - id.y;
+    float2x4 d = DecodeUYVY(id);
+    uint alpha = FrameSize.y * Stride * 4 + id_y * Stride * 2 + id.x * 2;
+    d[0].a = ReadAlpha(alpha);
+    d[1].a = ReadAlpha(alpha + 1);
+    return d;
 }
 
 // Decoder kernel entry points
-// The dispatch rounds the frame up to whole thread groups, so each kernel
-// rejects the threads that fall outside the frame.
+// Each thread decodes two horizontally adjacent pixels. The dispatch rounds
+// the frame up to whole thread groups, so each kernel rejects the threads
+// that fall outside the frame.
 
 [numthreads(8, 8, 1)]
 void DecodeUYVY_sRGB(uint2 id : SV_DispatchThreadID)
@@ -114,26 +104,22 @@ void DecodeUYVY_Linear(uint2 id : SV_DispatchThreadID)
     Destination[dp + uint2(1, 0)] = sRGB_to_Linear(d[1]);
 }
 
-[numthreads(4, 8, 1)]
+[numthreads(8, 8, 1)]
 void DecodeUYVA_sRGB(uint2 id : SV_DispatchThreadID)
 {
-    if (id.x * 4 >= FrameSize.x || id.y >= FrameSize.y) return;
-    float4x4 d = DecodeUYVA(id);
-    uint2 dp = id * uint2(4, 1);
+    if (id.x * 2 >= FrameSize.x || id.y >= FrameSize.y) return;
+    float2x4 d = DecodeUYVA(id);
+    uint2 dp = id * uint2(2, 1);
     Destination[dp + uint2(0, 0)] = d[0];
     Destination[dp + uint2(1, 0)] = d[1];
-    Destination[dp + uint2(2, 0)] = d[2];
-    Destination[dp + uint2(3, 0)] = d[3];
 }
 
-[numthreads(4, 8, 1)]
+[numthreads(8, 8, 1)]
 void DecodeUYVA_Linear(uint2 id : SV_DispatchThreadID)
 {
-    if (id.x * 4 >= FrameSize.x || id.y >= FrameSize.y) return;
-    float4x4 d = DecodeUYVA(id);
-    uint2 dp = id * uint2(4, 1);
+    if (id.x * 2 >= FrameSize.x || id.y >= FrameSize.y) return;
+    float2x4 d = DecodeUYVA(id);
+    uint2 dp = id * uint2(2, 1);
     Destination[dp + uint2(0, 0)] = sRGB_to_Linear(d[0]);
     Destination[dp + uint2(1, 0)] = sRGB_to_Linear(d[1]);
-    Destination[dp + uint2(2, 0)] = sRGB_to_Linear(d[2]);
-    Destination[dp + uint2(3, 0)] = sRGB_to_Linear(d[3]);
 }

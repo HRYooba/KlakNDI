@@ -13,6 +13,26 @@ public sealed partial class NdiReceiver : MonoBehaviour
       { get => SharedInstance.ExtraIPs;
         set => SharedInstance.ExtraIPs = value; }
 
+    // Comma-separated addresses this receiver adds to the shared ones while
+    // it's enabled. The finder queries all of them, so every receiver can
+    // find the senders at any of these addresses.
+    [SerializeField] string _extraIPs = null;
+    string _extraIPsRuntime;
+
+    public string receiverExtraIPs
+      { get => _extraIPsRuntime;
+        set => SetReceiverExtraIPs(value); }
+
+    // The addresses are registered only between OnEnable and OnDisable, which
+    // always come in pairs (OnValidate also runs on prefab assets).
+    bool _extraIPsRegistered;
+
+    void SetReceiverExtraIPs(string ips)
+    {
+        _extraIPs = _extraIPsRuntime = ips;
+        if (_extraIPsRegistered) SharedInstance.SetReceiverExtraIPs(this, ips);
+    }
+
     [SerializeField] string _ndiName = null;
     string _ndiNameRuntime;
 
@@ -78,6 +98,10 @@ public sealed partial class NdiReceiver : MonoBehaviour
     // comparing it between updates tells whether the texture was renewed.
     public long decodedFrameCount { get; private set; }
 
+    // Number of frames the decoder rejected (unsupported frame layouts). The
+    // texture keeps the last decoded frame.
+    public long rejectedFrameCount { get; private set; }
+
     // Invoked on the main thread for every captured video frame, including
     // the ones superseded by a newer frame within the same update. The frame
     // data is valid only during the call.
@@ -108,6 +132,7 @@ public sealed partial class NdiReceiver : MonoBehaviour
     {
         ndiName = _ndiName;
         receiveAudio = _receiveAudio;
+        receiverExtraIPs = _extraIPs;
     }
 
     #endregion

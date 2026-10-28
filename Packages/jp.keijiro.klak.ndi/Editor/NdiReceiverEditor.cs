@@ -11,6 +11,7 @@ sealed class NdiReceiverEditor : UnityEditor.Editor
     static class Labels
     {
         public static Label NdiName = "NDI Name";
+        public static Label ExtraIPs = "Extra IPs";
         public static Label Property = "Property";
         public static Label Select = "Select";
     }
@@ -18,6 +19,7 @@ sealed class NdiReceiverEditor : UnityEditor.Editor
     #pragma warning disable CS0649
 
     AutoProperty _ndiName;
+    AutoProperty _extraIPs;
     AutoProperty _targetTexture;
     AutoProperty _targetRenderer;
     AutoProperty _targetMaterialProperty;
@@ -69,6 +71,9 @@ sealed class NdiReceiverEditor : UnityEditor.Editor
             ShowNdiNameDropdown(rect);
 
         EditorGUILayout.EndHorizontal();
+
+        // Extra IPs
+        EditorGUILayout.DelayedTextField(_extraIPs, Labels.ExtraIPs);
 
         // Target Texture/Renderer
         EditorGUILayout.PropertyField(_targetTexture);

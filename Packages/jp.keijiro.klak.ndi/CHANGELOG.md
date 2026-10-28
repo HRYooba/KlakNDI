@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [2.2.0-hryooba.7] - 2026-10-28
+
+### Added
+
+- NDI Receiver: Extra IPs property (`receiverExtraIPs`) editable in the
+  inspector. The shared finder queries the addresses of all the enabled
+  receivers together with the static `extraIPs`.
+- NDI Receiver: `rejectedFrameCount` property counting the frames the decoder
+  rejected.
+- NDI Receiver: `NdiReceiver.Update` profiler marker.
+
+### Changed
+
+- NDI Receiver: A source name without parentheses also matches the stream name
+  part of "MACHINE (STREAM)". An exact match takes precedence, and among
+  several machines the first name in ordinal order is chosen (with a warning).
+- NDI Receiver: The decoder accepts frames with alpha (UYVA) of any even width
+  (it required a multiple of 4) and frames with padded rows (it required a
+  line stride of width x 2).
+- NDI Receiver: While the source isn't found, the receiver tries to find it
+  once a second instead of on every update.
+- NDI Receiver: The warning about an undecodable frame is shown once per frame
+  layout instead of for every frame.
+
 ## [2.2.0-hryooba.6] - 2026-10-28
 
 ### Added

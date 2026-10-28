@@ -1,6 +1,6 @@
 {
   "name": "jp.keijiro.klak.ndi",
-  "version": "2.2.0-hryooba.6",
+  "version": "2.2.0-hryooba.7",
   "displayName": "KlakNDI (HRYooba fork)",
   "description": "NewTek NDI® plugin for Unity",
   "unity": "2022.3",
